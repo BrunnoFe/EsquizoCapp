@@ -1,6 +1,12 @@
+"""Servidor TCP da engine visual — ARQUIVADO. Ver o README desta pasta.
+
+Vivia em `tools/server.py`. A aplicação era o SERVIDOR e o Godot conectava como
+cliente. Nada mais importa este módulo.
+"""
+
 import socket
 
-from tools import guitools
+from esquizocap.infraestrutura import guitools
 
 server_logger: guitools.SetLogger = guitools.SetLogger(logfilepath=r'logs\EsquizoCapLogs.log', namelogger='serverLogger')
 

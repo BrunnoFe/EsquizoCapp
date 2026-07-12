@@ -2,8 +2,12 @@
 
 from ttkbootstrap.constants import NE, SE, N
 
-from tools import arduino, guitools, hardware, hovertip_config, loading_screen
-from tools.custom_gui import CreateCustomGui, ttk
+from esquizocap import hardware
+from esquizocap.dominio.ciclo_aquisicao import CicloAquisicao, ModoAnalise, ResultadoCiclo
+from esquizocap.dominio.predicao import carregar_modelo
+from esquizocap.infraestrutura import guitools
+from esquizocap.interface import arduino_gui, hovertip_config, loading_screen
+from esquizocap.interface.custom_gui import CreateCustomGui, ttk
 
 ZERO = 0
 CHUNK_SIZE = 500
@@ -34,7 +38,6 @@ class EsquizoCap:
         self.__set_grids(itens_to_grid=(self.title_frame, self.model_frame, self.arduino_frame, self.bitalino_frame, self.analysis_frame, self.status_frame, 
                                        self.start_frame, self.notebook, self.tail_frame), columnspan=len(self.fileconfigs['nofcolumns']), frame_grid=True)
         self.__set_vars()
-        #self.__set_menus()
         self.__setTitlePhoto()
         self.__setwidgets(widgets=(self.__setmodel_widgets, self.__setarduino_widgets, self.__setbitalino_widgets, self.__setanalysis_widgets,
                                    self.__setStatusStart_widgets, self.__setmetersamp_widgets,self.__setmetersfreq_widgets, self.__setcolor_widgets))
@@ -58,9 +61,7 @@ class EsquizoCap:
         self.mutable_wids = (self.model_box, self.gravar_button, self.arduino_button, self.arduino_ports_box,
                              self.arduino_vel_box, self.arduino_lumin_box, self.bitalino_canais_box, self.bitalino_mac_box)
         
-        self.engine: hardware.EngineVisual = hardware.criar_engine(
-            nome_executavel=self.fileconfigs['executables']['Render'], caminho_executavel=self.realTimeRender
-        )
+        # A integração com a engine visual foi desligada; ver src/esquizocap/hardware/_engine_legado/.
         
         self.__setgerenal_status_widgets()
         self.__sethovertips(classes=(ttk.Button, ttk.Combobox, ttk.Checkbutton, ttk.Meter))
@@ -154,17 +155,6 @@ class EsquizoCap:
                 mainLogger.logger.info(f'Modo de iluminação escolhido = {int_modo}')
                 return int_modo        
 
-    def __set_menus(self) -> None:
-        mainLogger.logger.info('Criando os menus ...')
-        self.main_menu = ttk.Menu(master=self.root, type='menubar', name='main_menu', border=0, borderwidth=0, bd=0, activeborderwidth=0, relief='raised', font=self.custom_gui.font)
-        self.menu_gravacao = ttk.Menu(master=self.main_menu, tearoff=False, name='menu_gravação', border=0, borderwidth=0, bd=0, activeborderwidth=0, relief='raised', font=self.custom_gui.font)
-        self.menu_configs = ttk.Menu(master=self.main_menu, tearoff=False, name='menu_configs',border=0, borderwidth=0, bd=0, activeborderwidth=0, relief='raised', font=self.custom_gui.font)
-        self.menu_gravacao.add_command(label='Salvar dados em ...', command=self.__gravacao_basepath)
-        self.menu_configs.add_command(label='Preferências', command=lambda: print('a'))
-        self.main_menu.add_cascade(label='Gravação', menu=self.menu_gravacao)
-        self.main_menu.add_cascade(label='Configurações', menu=self.menu_configs, hidemargin=True, underline=0, columnbreak=0)
-        self.main_window.configure(menu=self.main_menu)
-
     def __setTitlePhoto(self) -> None:
         self.title_label = ttk.Label(master=self.title_frame, padding=10, image=self.title_photo)
         self.title_label.grid(columnspan=len(self.fileconfigs['nofcolumns']), sticky=N)
@@ -215,10 +205,10 @@ class EsquizoCap:
     def __setarduino_widgets(self)-> None:
         mainLogger.logger.info('Setting ARDUINO widgets')
         self.arduino_label = ttk.Label(master=self.arduino_frame, text='Arduino: ', name='arduino_label')
-        self.arduino_ports_box = ttk.Combobox(master=self.arduino_frame, textvariable=self.arduino_porta_var, width=40, justify='center', postcommand= lambda: arduino.listar_portas(controlador=self.arduino, list=self.arduino_ports_box), state='readonly', name='ard_port_box')
+        self.arduino_ports_box = ttk.Combobox(master=self.arduino_frame, textvariable=self.arduino_porta_var, width=40, justify='center', postcommand= lambda: arduino_gui.listar_portas(controlador=self.arduino, list=self.arduino_ports_box), state='readonly', name='ard_port_box')
         self.arduino_vel_box = ttk.Combobox(master=self.arduino_frame, values=self.fileconfigs['velocidade_pre'], textvariable=self.arduino_veloc_var, width=40, height=15, justify='center', state='readonly', name='ard_vel_box')
         self.arduino_lumin_box = ttk.Combobox(master=self.arduino_frame, values=self.fileconfigs['modos'], textvariable=self.arduino_lumin_var, width=40, justify='center', state='readonly', name='ard_lumi_box')  
-        self.arduino_button = ttk.Button(master=self.arduino_frame, textvariable=self.arduino_string_var, command= lambda: arduino.connect(arduino=self.arduino, port=self.arduino_porta_var.get(), baudrate=self.arduino_veloc_var.get(), 
+        self.arduino_button = ttk.Button(master=self.arduino_frame, textvariable=self.arduino_string_var, command= lambda: arduino_gui.connect(arduino=self.arduino, port=self.arduino_porta_var.get(), baudrate=self.arduino_veloc_var.get(), 
                                                                                                                                        modo=self.arduino_lumin_var.get(), configsfile=self.fileconfigs, 
                                                                                                                                        string=self.arduino_string_var, botao=self.arduino_button, selfmode=self.selected_lumi_mode,
                                                                                                                                        boxes=(self.arduino_ports_box, self.arduino_vel_box, self.arduino_lumin_box),
@@ -271,12 +261,8 @@ class EsquizoCap:
 
     def __setgerenal_status_widgets(self) -> None:
         self.arduino_statuslabel = ttk.Label(master=self.general_status_frame, text='Arduino status:', image=self.red_circle_img, compound='right', justify='right')
-        engine_ip, engine_porta = self.engine.endereco
-        self.server_status = ttk.Label(master=self.general_status_frame, text=f'|  Server at {engine_ip}:{engine_porta} status:',
-                                       justify='center', image=self.red_circle_img, compound='right')
         self.general_status_frame.grid(column=0, row=self.fileconfigs['nofrows'][-1], sticky='sw')
         self.arduino_statuslabel.grid(column=0, row=0, padx=2, pady=2)
-        self.server_status.grid(column=1, row=0, padx=2, pady=2)
         
     def do_check(self) -> None:
         
@@ -319,7 +305,7 @@ class EsquizoCap:
             
             if self.model_pathstring_var.get() in self.fileconfigs['models']: # verifica se é igual a algumo modelo do arquivo json (ex: Preditor HSV para Amplitude e Frequencia)
                 mainLogger.logger.info(f'Carregando modelo "{self.model_path}" ... ')
-                self.model = guitools.load_model(model_path=self.model_path) #model_path = string do arquivo json contendo o caminho (ex: json['models_path]["amp"]:"models/BestModel_HSV_v1.pickle")
+                self.model = carregar_modelo(caminho_modelo=self.model_path)
             else:
                 mainLogger.logger.error('Usuário não escolheu um modelo para realizar as predições')
                 return guitools.Messagebox.show_error(title='Error!', message='Escolha um modelo para realizar as predições.')
@@ -343,21 +329,27 @@ class EsquizoCap:
 
             self.bitalino_srate = self.bitalino.taxa_amostragem_nominal()
             mainLogger.logger.info(f'Sampling rate do BITALINO = {self.bitalino_srate}')
-            self.selected_lumi_mode = self.get_lumi_mode() 
-            
+            self.selected_lumi_mode = self.get_lumi_mode()
+
+            # O núcleo é montado aqui, e não no __init__, porque só agora existem todas as
+            # escolhas do usuário: modelo, canal, modo de análise e tamanho da janela.
+            self.ciclo = CicloAquisicao(
+                leitor=self.bitalino,
+                arduino=self.arduino,
+                modelo=self.model,
+                modo_analise=ModoAnalise(self.analysis_var.get()),
+                canal_bitalino=self.bitalino_canal_int,
+                modo_luminosidade=self.selected_lumi_mode,
+                tamanho_amostra_frequencia=self.freq_sampling_meter.amountusedvar.get(),
+            )
+
             self.amp_array = guitools.numpy.array([]) #array para registrar o tempo de cada amostra de dado do eletrodo
-            self.freq_results = guitools.numpy.array([]) 
-            self.freq_samples = guitools.numpy.array([])
-            self.freq_timestamp = guitools.numpy.array([])
+            self.freq_results = guitools.numpy.array([])
             self.freq_timesamples = guitools.numpy.array([])
 
             self.start_button.configure(command=self.__queryStop)
             self.start_button['text'] = 'Parar aquisição'
 
-            self.engine.iniciar()
-            self.engine.aguardar_conexao()
-            self.server_status.configure(image=self.green_circle_img)
-            
             self.change_state(mutables=self.mutable_wids, to='disabled')
             self.freq_sampling_meter.configure(interactive=False)
             
@@ -365,92 +357,81 @@ class EsquizoCap:
             self.aquisicao = True
             self.__pullSamples()
         
-    def __pullSamples(self) -> None:      
+    def __pullSamples(self) -> None:
+        """Roda um ciclo do núcleo e reflete o resultado na interface.
+
+        A GUI não faz mais aquisição nem predição: ela só escolhe os parâmetros que o
+        usuário controla (saturação, brilho), pede um ciclo ao `CicloAquisicao` e pinta
+        o `ResultadoCiclo` que voltar.
+        """
         try:
             if self.analysis_var.get() == 'Amplitude':
-
-                eeg_data, timestamp = self.bitalino.ler_amostra(timeout=1)
                 self.notebook.select(self.amp_meters_frame)
                 self.sampling_rate = self.amp_sampling_meter.amountusedvar.get()
-                dado_eeg = guitools.numpy.float32(eeg_data[self.bitalino_canal_int])
-                hsv_prediction, self.freq_resulta_faixa = self.do_prediction_and_send_data(eegdata_or_freq=dado_eeg)
-
-                if self.gravar_var.get() is True:
-                    self.amp_runs += 1
-                    self.amp_array = guitools.numpy.append(self.amp_array, [timestamp, dado_eeg, hsv_prediction])
-
+                saturacao = self.amp_saturation_meter.amountusedvar.get()
+                brilho = self.amp_value_meter.amountusedvar.get()
             else:
                 self.notebook.select(self.freq_meters_frame)
                 self.sampling_rate = CHUNK_SIZE
+                saturacao = self.freq_saturation_meter.amountusedvar.get()
+                brilho = self.freq_value_meter.amountusedvar.get()
 
-                eeg_data, timestamp = self.bitalino.ler_bloco(timeout=1, max_amostras=CHUNK_SIZE)
-                eeg_data = guitools.numpy.array(eeg_data)[:,1].astype(dtype='float32') #chuk samples shape =  (500,) size =  500
-                timestamp = guitools.numpy.array(timestamp, dtype='float32')              
+            resultado = self.ciclo.processar_amostra(saturacao=saturacao, brilho=brilho)
 
-                self.freq_samples = guitools.numpy.append(self.freq_samples, eeg_data)
-                self.freq_timestamp = guitools.numpy.append(self.freq_timestamp, timestamp)
-                
-                if self.freq_samples.size >= self.freq_sampling_meter.amountusedvar.get(): #precision = 2000 == size of array 2000
-                    frequency_analysis = guitools.frequency_analysis(eeg_data=self.freq_samples, precision=self.freq_sampling_meter.amountusedvar.get())
-                   
-                    hsv_prediction, self.freq_resulta_faixa = self.do_prediction_and_send_data(eegdata_or_freq=frequency_analysis['frequency'], faixa=frequency_analysis['faixa']) 
-            
-                    if self.gravar_var.get() is True:                            
-                        self.freq_runs += 1
-                        self.freq_results = guitools.numpy.append(self.freq_results, [self.freq_runs, self.freq_timestamp[-1], frequency_analysis['frequency'],
-                                                                                      frequency_analysis['power'], hsv_prediction, frequency_analysis['faixa']])
-                        self.freq_timesamples = guitools.numpy.append(self.freq_timesamples, (self.freq_samples, self.freq_timestamp))
-                    
-                    self.freq_samples  = guitools.numpy.array([])
-                    self.freq_timestamp = guitools.numpy.array([])
-                        
-                self.color_label_var.set(value=f'Analisando amostras = {self.freq_samples.size}/{self.freq_sampling_meter.amountusedvar.get()}{" | " + self.freq_resulta_faixa if self.freq_resulta_faixa is not None else ""}')                    
-                
-        except (TypeError, UnboundLocalError, IndexError, hardware.ErroStreamPerdido) as error:
+            # No modo Frequência, um ciclo pode não produzir resultado: os blocos ainda
+            # estão sendo acumulados até fechar a janela de análise.
+            if resultado is not None:
+                self.__pintar_resultado(resultado)
+
+                if self.gravar_var.get() is True:
+                    self.__registrar_resultado(resultado)
+
+            if self.analysis_var.get() != 'Amplitude':
+                self.color_label_var.set(
+                    value=f'Analisando amostras = {self.ciclo.amostras_acumuladas}/{self.ciclo.tamanho_amostra_frequencia}'
+                          f'{" | " + self.freq_resulta_faixa if self.freq_resulta_faixa is not None else ""}'
+                )
+
+        except (IndexError, hardware.ErroStreamPerdido, hardware.ErroConexaoBitalino) as error:
             mainLogger.logger.exception(error)
-            if type(error).__name__ == "IndexError" or type(error).__name__ == "ErroStreamPerdido":
-                self.aquisicao = False
-                msg: str = f'"{type(error).__name__} detectado. Opensginals ou bitalino pode não estar funcionando corretamente. Verifique a conexão.'
-                mainLogger.logger.error(msg)
-                guitools.Messagebox.show_error(msg)
-                self.__stop()
-
-    def do_prediction_and_send_data(self, eegdata_or_freq: float, faixa: str | None = None) -> tuple[str, str] | tuple[str, None] :
-      
-        hsv_prediction: str = f'{self.model.predict([[eegdata_or_freq]])[0]}'
-
-        if self.analysis_var.get() == 'Amplitude':
-            self.color_label_var.set(value=f'Amplitude = {eegdata_or_freq:0.2f}uV')
-            self.amp_hue_meter.amountusedvar.set(int(hsv_prediction))
-            saturacao = self.amp_saturation_meter.amountusedvar.get()
-            brilho = self.amp_value_meter.amountusedvar.get()
-            resultado = None
-            print(f'H = {hsv_prediction}| Dados do canal ativo: {eegdata_or_freq:0.2f}uV | ({self.selected_lumi_mode}, {hsv_prediction}, {saturacao}, {brilho})')
-
-        else:
-            resultado: str = f'Frequência = {eegdata_or_freq:0.2f}Hz | {faixa}'
-            self.freq_hue_meter.amountusedvar.set(int(hsv_prediction))
-            saturacao: int = self.freq_saturation_meter.amountusedvar.get()
-            brilho: int = self.freq_value_meter.amountusedvar.get()
-            print(f'Predição = {hsv_prediction}| H = {hsv_prediction}, S = {saturacao}, V = {brilho}')
-
-        self.arduino.enviar_comando_cor(modo=self.selected_lumi_mode, hue=int(hsv_prediction), saturacao=saturacao, brilho=brilho)
-
-        hex_color, rgb_color = guitools.hsv_rgb_hex(int(hsv_prediction), saturacao, brilho)
-
-        try:
-            self.engine.enviar_cor(rgb=rgb_color)
-        except hardware.ErroEngineDesconectada as error:
             self.aquisicao = False
-            self.__cancel_actions(self.after_action)
-            mainLogger.logger.error(error)
-            guitools.Messagebox.show_error(f'Renderização fechada. Parando a execução da aquisição. {error}')
-            self.__stop() #parar a aquisição? ou continuar normalmente?
-        
-        self.color_label.configure(background=hex_color)
+            msg: str = (f'{type(error).__name__} detectado. OpenSignals ou BITalino pode não estar '
+                        'funcionando corretamente. Verifique a conexão.')
+            mainLogger.logger.error(msg)
+            guitools.Messagebox.show_error(msg)
+            self.__stop()
 
-        return hsv_prediction, resultado
-    
+    def __pintar_resultado(self, resultado: ResultadoCiclo) -> None:
+        """Reflete um `ResultadoCiclo` nos widgets. Nenhuma lógica de negócio aqui."""
+        if resultado.faixa_frequencia is None:
+            self.amp_hue_meter.amountusedvar.set(resultado.hue)
+            self.color_label_var.set(value=f'Amplitude = {resultado.metrica_bruta:0.2f}uV')
+        else:
+            self.freq_hue_meter.amountusedvar.set(resultado.hue)
+            self.freq_resulta_faixa = (f'Frequência = {resultado.metrica_bruta:0.2f}Hz '
+                                       f'| {resultado.faixa_frequencia}')
+
+        self.color_label.configure(background=resultado.cor_hex)
+
+    def __registrar_resultado(self, resultado: ResultadoCiclo) -> None:
+        """Acumula o resultado para a exportação em Excel feita no `__stop`."""
+        if resultado.janela is None:
+            self.amp_runs += 1
+            self.amp_array = guitools.numpy.append(
+                self.amp_array, [resultado.timestamp, resultado.metrica_bruta, resultado.hue]
+            )
+            return
+
+        self.freq_runs += 1
+        self.freq_results = guitools.numpy.append(
+            self.freq_results,
+            [self.freq_runs, resultado.timestamp, resultado.metrica_bruta,
+             resultado.potencia, resultado.hue, resultado.faixa_frequencia],
+        )
+        self.freq_timesamples = guitools.numpy.append(
+            self.freq_timesamples, (resultado.janela.amostras, resultado.janela.timestamps)
+        )
+
     def __cancel_actions(self, action_list: list) -> None:
         if action_list.__len__() > 0: 
             for index, _ in enumerate(action_list):
@@ -475,8 +456,7 @@ class EsquizoCap:
         self.__cancel_actions(self.after_action)
         self.bitalino.encerrar_stream()
         self.arduino.desconectar()
-        self.engine.encerrar()
-        mainLogger.logger.info(f'Arduino e Bitalino desconectados.')
+        mainLogger.logger.info('Arduino e Bitalino desconectados.')
 
         if self.freq_runs != ZERO:
             guitools.salvar_dados(registros={'freq_time_samples':self.freq_timesamples, 'freq_results':self.freq_results},
@@ -488,7 +468,6 @@ class EsquizoCap:
 
         self.arduino_string_var.set('Conectar')
         self.arduino_statuslabel.configure(image=self.red_circle_img)
-        self.server_status.configure(image=self.red_circle_img)
         self.start_button['text'] = 'Começar aquisição'
         self.start_button.configure(command=self.__start)
         self.freq_sampling_meter.configure(interactive=True)

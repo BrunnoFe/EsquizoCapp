@@ -12,8 +12,7 @@ extend-exclude = [".venv", "engine"]
 # imports (I) e modernização de sintaxe (UP).
 select = ["E", "F", "I", "UP"]
 
-# E501 (linha longa) fica desligado: main.py e main_nooverride.py são legado com
-# centenas de linhas acima de 200 colunas, e ligar a regra faria `ruff check`
-# falhar sempre, inutilizando o lint como portão. Reative quando o legado for
-# quebrado em linhas menores.
+# E501 (linha longa) fica desligado: main.py é legado com dezenas de linhas acima
+# de 200 colunas, e ligar a regra faria `ruff check` falhar sempre, inutilizando o
+# lint como portão. Reative quando o legado for quebrado em linhas menores.
 ignore = ["E501"]

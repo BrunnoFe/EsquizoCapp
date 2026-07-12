@@ -5,8 +5,8 @@ widgets, trocar o rótulo do botão, pintar o status). O acesso ao hardware em s
 fica atrás de `ControladorLedArduino` — ver `tools/hardware/`.
 """
 
-from tools.guitools import Messagebox, SetLogger
-from tools.hardware import ControladorLedArduino, ErroConexaoArduino
+from esquizocap.hardware import ControladorLedArduino, ErroConexaoArduino
+from esquizocap.infraestrutura.guitools import Messagebox, SetLogger
 
 arduinoLogger: SetLogger = SetLogger(namelogger='arduinoLogger', logfilepath=r'logs\EsquizoCapLogs.log')
 

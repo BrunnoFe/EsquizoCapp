@@ -1,7 +1,10 @@
-"""Implementação fake da engine visual: nem processo do Godot, nem socket."""
+"""Implementação fake da engine visual — ARQUIVADO. Ver o README desta pasta.
 
-from tools.guitools import SetLogger
-from tools.hardware.engine_protocolo import montar_mensagem_visual
+Fingia ser a engine do Godot, sem processo nem socket. Nada mais importa este módulo.
+"""
+
+from esquizocap.hardware._engine_legado.engine_protocolo import montar_mensagem_visual
+from esquizocap.infraestrutura.guitools import SetLogger
 
 engineFakeLogger: SetLogger = SetLogger(namelogger='engineFake', logfilepath=r'logs\EsquizoCapLogs.log')
 

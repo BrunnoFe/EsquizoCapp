@@ -3,8 +3,8 @@
 import math
 import random
 
-from tools.guitools import SetLogger
-from tools.hardware.interfaces import ErroConexaoBitalino
+from esquizocap.hardware.contratos import ErroConexaoBitalino, LeitorBitalino
+from esquizocap.infraestrutura.guitools import SetLogger
 
 bitalinoFakeLogger: SetLogger = SetLogger(namelogger='bitalinoFake', logfilepath=r'logs\EsquizoCapLogs.log')
 
@@ -18,7 +18,7 @@ AMPLITUDE_MICROVOLTS: float = 50.0
 RUIDO_MICROVOLTS: float = 6.0
 
 
-class BitalinoSintetico:
+class BitalinoSintetico(LeitorBitalino):
     """Gera um EEG sintético plausível em vez de ler o hardware.
 
     O sinal é uma senoide na banda Alpha (10 Hz) com ruído gaussiano, de modo que a

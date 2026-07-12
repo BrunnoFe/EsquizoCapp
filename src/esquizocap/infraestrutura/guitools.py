@@ -1,20 +1,17 @@
-import colorsys
 import json
 import logging
 import os
-from pathlib import Path
-import pickle
-import psutil
 import subprocess
 import time
+from pathlib import Path
+from tkinter.filedialog import askdirectory
 
-import pandas as pd
-import openpyxl
 import numpy
+import pandas as pd
+import psutil
 from ttkbootstrap.dialogs import Messagebox, Querybox
-from tkinter.filedialog import askopenfilename, askdirectory
-from scipy.signal import welch, butter, filtfilt
-from tools import settings
+
+from esquizocap.infraestrutura import settings
 
 ENCODING_FORMAT = 'utf-8'
 DEPENDENCIES: list[str] = ['engine', 'images', 'logs', 'models', 'settings']
@@ -183,32 +180,9 @@ def kill_process(executablename): #TODO: melhorar essa função! ele é repetida
         
     return guilogger.logger.info(f'"{executablename}" não está sendo executado')
 
-def model_path(**kwargs) -> None:
-    kwargs['model_path'].set(askopenfilename(title='Escolha o arquivo .PICKLE com o modelo HSV: ', filetypes=[('Arquivos Pickle', '*.pickle')]))
-
-def load_model(model_path: str = None) :
-    with open(file=model_path, mode='rb') as model_file: 
-        return pickle.load(file=model_file)
-
 def canais_bitalino(**kwargs) -> None:
     if isinstance(kwargs['canais'], list):
         kwargs['box']['values'] = kwargs['canais']
-        
-def hsv_rgb_hex(h: int, s: int, v: int) -> tuple[str, tuple[int, int, int]]:
-    """
-    Converte uma cor no formato HUE para HEX e RGB
-
-    Args:
-        h (int): Recebe o valor de HUE entre 0 e 255
-        s (int): Recebe o valor de SATURAÇÃO entre 0 e 255
-        v (int): Recebe o valor de VALUE entre 0 e 255
-        #TODO: returntype (str): 'both' para retornar os dois formatos, 'hex' ou 'rgb' para retornar apenas um dos dois tipos.
-    Returns:
-        (tuple[str, tuple[int, int, int]]): Retorna a cor HSV em HEXADECIMAL e em RGB
-    """
-    h, s, v = h/255, s/255, v/255 # recebe os valores HSV entre 0 e 255 e os coloca entre 0 e 1
-    rgb: tuple[int, int, int] = tuple(int(item*255) for item in colorsys.hsv_to_rgb(h, s, v)) # manda valores entre 0 e 255 no formato RGB
-    return f'#{rgb[0]:02X}{rgb[1]:02X}{rgb[2]:02X}', rgb
 
 def salvar_dados(registros: dict, basepath: str = None, nrows: int = None, ncolumns: int = None) -> None:
     guilogger.logger.info('Salvando dados da aquisição')
@@ -272,55 +246,3 @@ def salvar_dados(registros: dict, basepath: str = None, nrows: int = None, ncolu
             guilogger.logger.error(f'Não foi possível salvar a aquisição. Erro = {error}')
             return Messagebox.show_error(title='Erro no salvamento de dados!', message=f'Não foi possível salvar a aquisição. Erro = {error}')
 
-# Função para aplicar um filtro passa-baixa
-def lowpass_filter(data, cutoff, fs, order=5):
-    nyq = 0.5 * fs
-    normal_cutoff = cutoff / nyq
-    b, a = butter(order, normal_cutoff, btype='low', analog=False)
-    return filtfilt(b, a, data)
-
-# Função para aplicar um filtro passa-alta
-def highpass_filter(data, cutoff, fs, order=5):
-    nyq = 0.5 * fs
-    normal_cutoff = cutoff / nyq
-    b, a = butter(order, normal_cutoff, btype='high', analog=False)
-    return filtfilt(b, a, data)
-
-# Função para categorizar a frequência dominante
-def categorize_frequency(frequency):
-    if 0.1 <= frequency < 4:
-        return 'Delta (Sono profundo, sono não REM)'
-    elif 4 <= frequency < 8:
-        return 'Theta (Sonolência, relaxamento)'
-    elif 8 <= frequency < 12:
-        return 'Alpha (Relaxamento, calma)'
-    elif 12 <= frequency < 30:
-        return 'Beta (Atenção, concentração)'
-    elif 30 <= frequency < 50:
-        return 'Gamma (Processamento cognitivo)'
-    else:
-        return 'Fora das bandas de EEG típicas'
-
-def frequency_analysis(eeg_data: float, precision: int = 1000, low_cutoff_freq: float = 0.1, high_cutoff_freq: float = 50.0) -> dict :
-
-    # Aplicando o filtro passa-alta seguido do passa-baixa
-    filtered_eeg_data = highpass_filter(data=eeg_data, cutoff=low_cutoff_freq, fs=precision)
-    filtered_eeg_data = lowpass_filter(data=filtered_eeg_data, cutoff=high_cutoff_freq, fs=precision)
-
-    # Calcular a Densidade Espectral de Potência (PSD) com os dados filtrados
-    frequencies, power_density = welch(filtered_eeg_data, fs=precision, nperseg=250, nfft=2048)
-
-    # Limitar as frequências ao intervalo de 1 Hz a 50 Hz
-    frequencies_limited = frequencies[frequencies <= high_cutoff_freq]
-    power_density_limited = power_density[:len(frequencies_limited)]
-
-    # Identificar a frequência dominante
-    dominant_frequency = frequencies_limited[numpy.argmax(power_density_limited)]
-    dominant_power = numpy.max(power_density_limited)
-
-    faixa_freq = categorize_frequency(dominant_frequency)
-
-    # Exibir os resultados
-    print(f'Frequência dominante: {dominant_frequency:.2f} Hz com potência: {dominant_power:.2f}. {faixa_freq}\nMédia de ativação = {numpy.mean(eeg_data, dtype="float16")}')
-
-    return {'frequency':dominant_frequency, 'power':dominant_power, 'faixa':faixa_freq}

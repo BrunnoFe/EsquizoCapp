@@ -1,4 +1,5 @@
-from idlelib.tooltip import OnHoverTooltipBase, Label
+from idlelib.tooltip import Label, OnHoverTooltipBase
+
 
 class Hovertip(OnHoverTooltipBase):
     "A tooltip that pops up when a mouse hovers over an anchor widget."

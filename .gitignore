@@ -185,9 +185,12 @@ cython_debug/
 CLAUDE.md
 ARCHITECTURE.md
 TESTES_MANUAIS.md
+DECISOES_PENDENTES.md
+PLANO_ACAO.md
 
 #folders
 engine/
 logs/
 tests/
 files/
+godot/

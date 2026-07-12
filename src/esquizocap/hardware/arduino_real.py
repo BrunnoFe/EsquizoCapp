@@ -3,15 +3,15 @@
 import serial
 import serial.tools.list_ports
 
-from tools.guitools import ENCODING_FORMAT, SetLogger
-from tools.hardware.interfaces import ErroConexaoArduino
+from esquizocap.hardware.contratos import ControladorLedArduino, ErroConexaoArduino
+from esquizocap.infraestrutura.guitools import ENCODING_FORMAT, SetLogger
 
 arduinoRealLogger: SetLogger = SetLogger(namelogger='arduinoReal', logfilepath=r'logs\EsquizoCapLogs.log')
 
 TIMEOUT_SERIAL_SEGUNDOS: int = 1
 
 
-class ArduinoSerial:
+class ArduinoSerial(ControladorLedArduino):
     """Controlador real da fita de LED, sobre uma porta serial (pyserial).
 
     O firmware do Arduino não está neste repositório: ele espera exatamente a
@@ -24,7 +24,9 @@ class ArduinoSerial:
 
     @property
     def esta_conectado(self) -> bool:
-        return self._porta_serial.is_open
+        # `bool(...)` porque o pyserial não tem type stubs: `is_open` chega como `Any`,
+        # e sem isso o `Any` vazaria para quem consome o contrato.
+        return bool(self._porta_serial.is_open)
 
     def listar_portas(self) -> list[str]:
         portas: list[str] = [str(porta) for porta in serial.tools.list_ports.comports()]
@@ -53,6 +55,12 @@ class ArduinoSerial:
         arduinoRealLogger.logger.info(f'Arduino conectado na porta "{porta}" a {baudrate} baud')
 
     def desconectar(self) -> None:
+        # Idempotente: o `__exit__` pode chamar isto mesmo se `conectar` nunca rodou
+        # (ex.: o `with` falhou antes). Sem a guarda, o log mentiria dizendo que
+        # encerrou uma conexão que nunca existiu.
+        if self._porta_serial.is_open is False:
+            return
+
         self._porta_serial.close()
         arduinoRealLogger.logger.info('Conexão serial com o Arduino encerrada')
 

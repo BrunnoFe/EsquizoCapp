@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "esquizocap"
+version = "0.1.0"
+description = "Aquisição de EEG do BITalino, predição de cor e saída para fita de LED."
+requires-python = ">=3.12"
+dependencies = [
+    "numpy",
+    "openpyxl",
+    "pandas",
+    "psutil",
+    # pylsl DEVE ficar em 1.16.2: da 1.18 em diante o pacote não exporta mais
+    # `LostError`, exceção que a aquisição captura.
+    "pylsl==1.16.2",
+    "pyserial",
+    "scikit-learn",
+    "scipy",
+    # ttkbootstrap >= 1.20 é obrigatório no Python 3.14: a 1.10.1 depende de
+    # `PIL.Image.CUBIC` (removido no Pillow 10) e o Pillow < 10 não compila no 3.14.
+    "ttkbootstrap>=1.20",
+]
+
+[project.optional-dependencies]
+dev = ["mypy", "ruff"]
+
+# Layout src/: o pacote `esquizocap` mora em src/esquizocap.
+# Para que `python main.py` e `scripts/rodar_ciclo_sem_gui.py` resolvam o import,
+# instale o projeto em modo editável a partir da raiz:  pip install -e .
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src/esquizocap"]
+# O legado ainda não tem tipos; checá-lo agora só produziria ruído que ninguém leria.
+exclude = '(_engine_legado|interface|infraestrutura)'
+
+# Estrito nas camadas que já foram tipadas: núcleo e bordas de hardware.
+[[tool.mypy.overrides]]
+module = ["esquizocap.dominio.*", "esquizocap.hardware.*"]
+strict = true
+
+# Bibliotecas sem type stubs. Não silencia erros nossos — só evita que o mypy
+# reclame de não achar tipos de dependências de terceiros.
+[[tool.mypy.overrides]]
+module = ["pylsl.*", "serial.*", "scipy.*", "sklearn.*"]
+ignore_missing_imports = true

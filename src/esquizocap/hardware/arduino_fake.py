@@ -1,7 +1,7 @@
 """Implementação fake do controlador de LED: simula o Arduino, sem hardware."""
 
-from tools.guitools import SetLogger
-from tools.hardware.interfaces import ErroConexaoArduino
+from esquizocap.hardware.contratos import ControladorLedArduino, ErroConexaoArduino
+from esquizocap.infraestrutura.guitools import SetLogger
 
 arduinoFakeLogger: SetLogger = SetLogger(namelogger='arduinoFake', logfilepath=r'logs\EsquizoCapLogs.log')
 
@@ -10,7 +10,7 @@ arduinoFakeLogger: SetLogger = SetLogger(namelogger='arduinoFake', logfilepath=r
 PORTA_SIMULADA: str = 'COM99 - Arduino simulado (fake)'
 
 
-class ArduinoFake:
+class ArduinoFake(ControladorLedArduino):
     """Simula a fita de LED registrando em log o comando que seria enviado.
 
     Não desenha nada nem abre porta serial: serve para exercitar a GUI, o modelo e

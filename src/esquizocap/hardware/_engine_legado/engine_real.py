@@ -1,9 +1,13 @@
-"""Implementação real da engine visual: lança o executável do Godot e fala por socket TCP."""
+"""Implementação real da engine visual — ARQUIVADO. Ver o README desta pasta.
 
-from tools import server
-from tools.guitools import ENCODING_FORMAT, SetLogger, kill_process, runProcess
-from tools.hardware.engine_protocolo import montar_mensagem_visual
-from tools.hardware.interfaces import ErroEngineDesconectada
+Lançava o executável do Godot e falava com ele por socket TCP. Nada mais importa este
+módulo: a integração foi desligada, pendente de reescrita.
+"""
+
+from esquizocap.hardware._engine_legado import server
+from esquizocap.hardware._engine_legado.engine_protocolo import montar_mensagem_visual
+from esquizocap.hardware._engine_legado.interfaces_engine import ErroEngineDesconectada
+from esquizocap.infraestrutura.guitools import ENCODING_FORMAT, SetLogger, kill_process, runProcess
 
 engineRealLogger: SetLogger = SetLogger(namelogger='engineReal', logfilepath=r'logs\EsquizoCapLogs.log')
 

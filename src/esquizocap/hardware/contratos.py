@@ -1,11 +1,18 @@
 """Contratos das bordas de hardware do EsquizoCap.
 
-Cada Protocol aqui captura apenas o que o resto do sistema realmente consome do
+Cada classe base aqui captura apenas o que o resto do sistema realmente consome do
 componente — nem mais, nem menos. Assim é possível trocar o hardware real por um
 simulador sem que a GUI ou a lógica de negócio percebam a diferença.
+
+São `abc.ABC`, e não `Protocol`: a herança é explícita, e uma implementação a que
+falte qualquer método do contrato falha já na instanciação, em vez de só estourar
+quando o método faltante for chamado — o que, numa borda de hardware, aconteceria
+no meio de uma aquisição.
 """
 
-from typing import Protocol, runtime_checkable
+from abc import ABC, abstractmethod
+from types import TracebackType
+from typing import Self
 
 
 class ErroConexaoArduino(Exception):
@@ -32,36 +39,32 @@ class ErroStreamPerdido(Exception):
     """
 
 
-class ErroEngineDesconectada(Exception):
-    """A engine visual fechou a conexão (na prática, a janela do Godot foi fechada).
-
-    Traduz o `ConnectionResetError` do socket. A aquisição trata isso parando a
-    captura.
-    """
-
-
-@runtime_checkable
-class ControladorLedArduino(Protocol):
+class ControladorLedArduino(ABC):
     """Contrato do Arduino que comanda a fita de LED.
 
     O protocolo serial em si (formato do comando, encoding) é responsabilidade da
     implementação, não de quem chama: quem consome esta interface pensa em
     "enviar uma cor", não em bytes.
+
+    É um context manager: dentro de um `with`, a porta é fechada ao sair do bloco,
+    inclusive se uma exceção interromper o corpo. Uma porta serial é um recurso do
+    SO — deixá-la aberta impede o próximo processo (ou a próxima execução) de abrir.
     """
 
     @property
+    @abstractmethod
     def esta_conectado(self) -> bool:
         """Indica se a porta serial está aberta no momento."""
-        ...
 
+    @abstractmethod
     def listar_portas(self) -> list[str]:
         """Lista as portas seriais disponíveis, no formato "COM5 - descrição".
 
         A GUI depende de a string conter "COM" para liberar o botão de conexão,
         e `conectar` corta a descrição no primeiro " - ".
         """
-        ...
 
+    @abstractmethod
     def conectar(self, porta: str, baudrate: int) -> None:
         """Abre a conexão serial com o Arduino.
 
@@ -72,12 +75,17 @@ class ControladorLedArduino(Protocol):
         Raises:
             ErroConexaoArduino: Se a porta não puder ser aberta.
         """
-        ...
 
+    @abstractmethod
     def desconectar(self) -> None:
-        """Fecha a conexão serial. Não deve falhar se já estiver fechada."""
-        ...
+        """Fecha a conexão serial.
 
+        DEVE ser idempotente: chamar duas vezes, ou sem nunca ter conectado, não pode
+        levantar exceção. O `__exit__` depende disso — ele fecha a porta mesmo quando o
+        corpo do `with` falhou antes de conectar.
+        """
+
+    @abstractmethod
     def enviar_comando_cor(self, modo: int, hue: int, saturacao: int, brilho: int) -> None:
         """Envia uma cor HSV e o modo de animação para a fita de LED.
 
@@ -87,18 +95,41 @@ class ControladorLedArduino(Protocol):
             saturacao: Saturação, de 0 a 255 (vem do medidor da GUI, não do modelo).
             brilho: Brilho, de 0 a 255 (vem do medidor da GUI, não do modelo).
         """
-        ...
+
+    def __enter__(self) -> Self:
+        """Entra no bloco `with`.
+
+        NÃO conecta: porta e baudrate são escolhas de quem chama, e conectar aqui
+        exigiria passá-las ao construtor. O `with` cuida só do fechamento.
+        """
+        return self
+
+    def __exit__(
+        self,
+        tipo_excecao: type[BaseException] | None,
+        excecao: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        """Fecha a porta ao sair do bloco, mesmo se o corpo levantou exceção.
+
+        Retorna None (falsy), ou seja, NÃO suprime a exceção: ela continua subindo.
+        """
+        self.desconectar()
 
 
-@runtime_checkable
-class LeitorBitalino(Protocol):
+class LeitorBitalino(ABC):
     """Contrato da fonte de sinal EEG.
 
     O BITalino nunca é acessado direto: o OpenSignals publica um stream via Lab
     Streaming Layer e é dele que se lê. Quem consome esta interface não precisa
     saber disso — só pede amostras.
+
+    É um context manager: dentro de um `with`, o stream é encerrado ao sair do bloco,
+    inclusive se uma exceção interromper o corpo. O inlet do LSL segura um socket;
+    abandoná-lo aberto deixa a conexão pendurada até o processo morrer.
     """
 
+    @abstractmethod
     def conectar(self, mac_addr: str) -> None:
         """Abre o stream de EEG do dispositivo com o MAC informado.
 
@@ -109,12 +140,12 @@ class LeitorBitalino(Protocol):
             ErroConexaoBitalino: MAC inválido, ou stream não encontrado (OpenSignals
                 fechado ou sem o compartilhamento LSL ativo).
         """
-        ...
 
+    @abstractmethod
     def taxa_amostragem_nominal(self) -> int:
         """Taxa de amostragem declarada pelo stream, em Hz."""
-        ...
 
+    @abstractmethod
     def ler_amostra(self, timeout: float) -> tuple[list[float], float]:
         """Lê uma única amostra (um valor por canal) e seu timestamp.
 
@@ -127,8 +158,8 @@ class LeitorBitalino(Protocol):
         Raises:
             ErroStreamPerdido: Se o stream cair durante a leitura.
         """
-        ...
 
+    @abstractmethod
     def ler_bloco(self, timeout: float, max_amostras: int) -> tuple[list[list[float]], list[float]]:
         """Lê um bloco de amostras de uma vez, com os timestamps correspondentes.
 
@@ -142,56 +173,31 @@ class LeitorBitalino(Protocol):
         Raises:
             ErroStreamPerdido: Se o stream cair durante a leitura.
         """
-        ...
 
+    @abstractmethod
     def encerrar_stream(self) -> None:
-        """Fecha o stream. Não deve falhar se já estiver fechado."""
-        ...
+        """Fecha o stream.
 
-
-@runtime_checkable
-class EngineVisual(Protocol):
-    """Contrato da engine de shaders reativos (Godot).
-
-    A engine é um processo separado que conecta de volta como CLIENTE: a aplicação
-    é quem abre o servidor. Por isso o ciclo é `iniciar` (lança o processo) e só
-    então `aguardar_conexao`.
-    """
-
-    @property
-    def endereco(self) -> tuple[str, int]:
-        """Endereço em que a engine é esperada, como `(ip, porta)`.
-
-        Precisa existir antes de a engine subir: a GUI mostra esse endereço no
-        rótulo de status assim que a janela abre.
+        DEVE ser idempotente: chamar duas vezes, ou sem nunca ter conectado, não pode
+        levantar exceção. O `__exit__` depende disso — ele encerra o stream mesmo
+        quando o corpo do `with` falhou antes de conectar.
         """
-        ...
 
-    def iniciar(self) -> None:
-        """Lança o processo da engine, reiniciando-o se já estiver rodando."""
-        ...
+    def __enter__(self) -> Self:
+        """Entra no bloco `with`.
 
-    def aguardar_conexao(self) -> None:
-        """Bloqueia até a engine conectar de volta.
-
-        ATENÇÃO: na implementação real isso é um `accept()` bloqueante e SEM timeout,
-        chamado na thread da GUI — a interface congela até o Godot conectar. É o
-        comportamento original e a ordem (`iniciar` e depois `aguardar_conexao`) não
-        pode ser invertida.
+        NÃO conecta: o MAC é escolha de quem chama. O `with` cuida só do fechamento.
         """
-        ...
+        return self
 
-    def enviar_cor(self, rgb: tuple[int, int, int]) -> None:
-        """Envia uma cor para a engine, junto dos parâmetros de shader.
+    def __exit__(
+        self,
+        tipo_excecao: type[BaseException] | None,
+        excecao: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        """Encerra o stream ao sair do bloco, mesmo se o corpo levantou exceção.
 
-        Args:
-            rgb: Cor já convertida de HSV para RGB, cada canal de 0 a 255.
-
-        Raises:
-            ErroEngineDesconectada: Se a engine tiver fechado a conexão.
+        Retorna None (falsy), ou seja, NÃO suprime a exceção: ela continua subindo.
         """
-        ...
-
-    def encerrar(self) -> None:
-        """Encerra o processo da engine. Não deve falhar se ele já estiver fechado."""
-        ...
+        self.encerrar_stream()

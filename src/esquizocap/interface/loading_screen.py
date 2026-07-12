@@ -1,6 +1,7 @@
-from itertools import cycle
-import tkinter as tk
 import os
+import tkinter as tk
+from itertools import cycle
+
 
 class LoadingScreen:
     def __init__(self, width: int = 640, height: int = 360, transparent_color: str = '#70448f', tvelocity: int = 15) -> None:
