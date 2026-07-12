@@ -49,7 +49,13 @@ def criar_arduino() -> ControladorLedArduino:
 
 
 def criar_bitalino() -> LeitorBitalino:
-    """Cria o leitor de EEG, real ou simulado conforme `ESQUIZOCAP_FAKE`."""
+    """Cria o leitor de EEG, real ou simulado conforme `ESQUIZOCAP_FAKE`.
+
+    O fake sai daqui em TEMPO REAL: quem o consome é a thread de aquisição, que lê em
+    laço contínuo. Um gerador que entrega amostras instantaneamente faria esse laço
+    queimar uma CPU inteira e simular horas de EEG em segundos. Os testes constroem o
+    `BitalinoSintetico` direto, sem tempo real, justamente para não pagar esse relógio.
+    """
     if usar_fake('bitalino'):
-        return BitalinoSintetico()
+        return BitalinoSintetico(tempo_real=True)
     return BitalinoLSL()

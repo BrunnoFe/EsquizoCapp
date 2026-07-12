@@ -69,7 +69,7 @@ class CreateCustomGui:
         stylew = windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
         stylew = stylew & ~WS_EX_TOOLWINDOW
         stylew = stylew | WS_EX_APPWINDOW
-        res = windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, stylew)
+        windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, stylew)
         self.root.wm_withdraw()
         self.root.after(10, lambda: self.root.wm_deiconify())
         
@@ -80,11 +80,11 @@ class CreateCustomGui:
     def deminimize(self, event):
         self.root.focus() 
         self.root.attributes("-alpha", 1) # so you can see the window when is not minimized
-        if self.root.minimized == True:
+        if self.root.minimized:
             self.root.minimized = False                              
             
     def maximize_me(self) -> None:
-        if self.root.maximized == False: # if the window was not maximized
+        if not self.root.maximized: # if the window was not maximized
             self.root.normal_size = self.root.geometry()
             self.expand_button.config(text=" 🗗 ")
             self.root.geometry(f"{self.root.winfo_screenwidth()}x{self.root.winfo_screenheight()}+0+0")
@@ -96,7 +96,7 @@ class CreateCustomGui:
             self.root.maximized = not self.root.maximized # now it is not maximized
             
     def get_pos(self, event) -> None: # this is executed when the title bar is clicked to move the window
-        if self.root.maximized == False:
+        if not self.root.maximized:
             self.xwin: int = self.root.winfo_x()
             self.ywin: int = self.root.winfo_y()
             self.startx: int = event.x_root

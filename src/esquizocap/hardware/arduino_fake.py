@@ -1,13 +1,14 @@
 """Implementação fake do controlador de LED: simula o Arduino, sem hardware."""
 
+import logging
+
 from esquizocap.hardware.contratos import ControladorLedArduino, ErroConexaoArduino
-from esquizocap.infraestrutura.guitools import SetLogger
 
-arduinoFakeLogger: SetLogger = SetLogger(namelogger='arduinoFake', logfilepath=r'logs\EsquizoCapLogs.log')
-
-# A GUI só libera a conexão se a string da porta contiver "COM" (ver `do_check` em
-# main.py), então a porta simulada precisa respeitar esse formato.
+# A GUI só libera a conexão se a string da porta contiver "COM", então a porta simulada
+# precisa respeitar esse formato.
 PORTA_SIMULADA: str = 'COM99 - Arduino simulado (fake)'
+
+logger = logging.getLogger(__name__)
 
 
 class ArduinoFake(ControladorLedArduino):
@@ -29,7 +30,7 @@ class ArduinoFake(ControladorLedArduino):
         return self._conectado
 
     def listar_portas(self) -> list[str]:
-        arduinoFakeLogger.logger.info(f'[FAKE] Porta simulada disponível = {PORTA_SIMULADA}')
+        logger.info(f'[FAKE] Porta simulada disponível = {PORTA_SIMULADA}')
         return [PORTA_SIMULADA]
 
     def conectar(self, porta: str, baudrate: int) -> None:
@@ -39,15 +40,23 @@ class ArduinoFake(ControladorLedArduino):
             )
 
         self._conectado = True
-        arduinoFakeLogger.logger.info(f'[FAKE] Arduino simulado conectado na porta "{porta}" a {baudrate} baud')
+        logger.info(f'[FAKE] Arduino simulado conectado na porta "{porta}" a {baudrate} baud')
 
     def desconectar(self) -> None:
         self._conectado = False
-        arduinoFakeLogger.logger.info(
+        logger.info(
             f'[FAKE] Arduino simulado desconectado após {self.comandos_enviados} comandos'
         )
 
     def enviar_comando_cor(self, modo: int, hue: int, saturacao: int, brilho: int) -> None:
+        # Espelha o controlador real: enviar numa porta fechada é `ErroConexaoArduino` lá,
+        # e precisa ser aqui também. Um fake que aceita o que o real recusa deixa passar
+        # justamente o bug que ele deveria ter pego.
+        if self._conectado is False:
+            raise ErroConexaoArduino(
+                'A porta serial do Arduino está fechada. Conecte o Arduino antes de enviar uma cor.'
+            )
+
         self.ultimo_comando = f'({modo},{hue},{saturacao},{brilho})\n'
         self.comandos_enviados += 1
-        arduinoFakeLogger.logger.debug(f'[FAKE] Comando que iria para a serial = {self.ultimo_comando!r}')
+        logger.debug(f'[FAKE] Comando que iria para a serial = {self.ultimo_comando!r}')

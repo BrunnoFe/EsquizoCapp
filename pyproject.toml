@@ -24,7 +24,18 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["mypy", "ruff"]
+dev = ["mypy", "pytest", "pytest-cov", "ruff"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# `-q` porque a saída padrão do pytest é ruidosa; `--strict-markers` para que um marker
+# escrito errado falhe em vez de ser ignorado em silêncio.
+addopts = "-q --strict-markers"
+
+[tool.coverage.run]
+source = ["esquizocap.dominio", "esquizocap.hardware", "esquizocap.aplicacao"]
+# A integração com a engine está arquivada e não roda: cobri-la só sujaria o relatório.
+omit = ["*/_engine_legado/*"]
 
 # Layout src/: o pacote `esquizocap` mora em src/esquizocap.
 # Para que `python main.py` e `scripts/rodar_ciclo_sem_gui.py` resolvam o import,
@@ -38,9 +49,9 @@ files = ["src/esquizocap"]
 # O legado ainda não tem tipos; checá-lo agora só produziria ruído que ninguém leria.
 exclude = '(_engine_legado|interface|infraestrutura)'
 
-# Estrito nas camadas que já foram tipadas: núcleo e bordas de hardware.
+# Estrito nas camadas que já foram tipadas: núcleo, bordas de hardware e orquestração.
 [[tool.mypy.overrides]]
-module = ["esquizocap.dominio.*", "esquizocap.hardware.*"]
+module = ["esquizocap.dominio.*", "esquizocap.hardware.*", "esquizocap.aplicacao.*"]
 strict = true
 
 # Bibliotecas sem type stubs. Não silencia erros nossos — só evita que o mypy

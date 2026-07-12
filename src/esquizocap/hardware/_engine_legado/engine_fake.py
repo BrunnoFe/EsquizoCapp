@@ -3,12 +3,13 @@
 Fingia ser a engine do Godot, sem processo nem socket. Nada mais importa este módulo.
 """
 
-from esquizocap.hardware._engine_legado.engine_protocolo import montar_mensagem_visual
-from esquizocap.infraestrutura.guitools import SetLogger
+import logging
 
-engineFakeLogger: SetLogger = SetLogger(namelogger='engineFake', logfilepath=r'logs\EsquizoCapLogs.log')
+from esquizocap.hardware._engine_legado.engine_protocolo import montar_mensagem_visual
 
 ENDERECO_SIMULADO: tuple[str, int] = ('127.0.0.1', 5050)
+
+logger = logging.getLogger(__name__)
 
 
 class EngineSimulada:
@@ -31,17 +32,17 @@ class EngineSimulada:
         return ENDERECO_SIMULADO
 
     def iniciar(self) -> None:
-        engineFakeLogger.logger.info('[FAKE] Engine simulada "iniciada" (nenhum processo do Godot foi lançado)')
+        logger.info('[FAKE] Engine simulada "iniciada" (nenhum processo do Godot foi lançado)')
 
     def aguardar_conexao(self) -> None:
-        engineFakeLogger.logger.info('[FAKE] Engine simulada conectada de imediato (sem accept() bloqueante)')
+        logger.info('[FAKE] Engine simulada conectada de imediato (sem accept() bloqueante)')
 
     def enviar_cor(self, rgb: tuple[int, int, int]) -> None:
         self.ultima_mensagem = montar_mensagem_visual(rgb)
         self.mensagens_enviadas += 1
-        engineFakeLogger.logger.debug(f'[FAKE] Mensagem que iria para o Godot = {self.ultima_mensagem!r}')
+        logger.debug(f'[FAKE] Mensagem que iria para o Godot = {self.ultima_mensagem!r}')
 
     def encerrar(self) -> None:
-        engineFakeLogger.logger.info(
+        logger.info(
             f'[FAKE] Engine simulada encerrada após {self.mensagens_enviadas} mensagens'
         )

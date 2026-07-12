@@ -1,17 +1,17 @@
 """Implementação real do leitor de EEG: lê o BITalino via OpenSignals + LSL."""
 
+import logging
 import re
 
 from pylsl import LostError, StreamInlet, resolve_byprop
 
 from esquizocap.hardware.contratos import ErroConexaoBitalino, ErroStreamPerdido, LeitorBitalino
-from esquizocap.infraestrutura.guitools import SetLogger
-
-bitalinoRealLogger: SetLogger = SetLogger(namelogger='bitalinoReal', logfilepath=r'logs\EsquizoCapLogs.log')
 
 # O OpenSignals publica o stream LSL usando o MAC do dispositivo como `type`.
 PADRAO_MAC: re.Pattern[str] = re.compile(r'\d\d[: ]\d\d[: ]\d\d[: ]\d\d[: ]\d\d[: ]\d\d')
 TIMEOUT_RESOLUCAO_SEGUNDOS: float = 2.0
+
+logger = logging.getLogger(__name__)
 
 
 class BitalinoLSL(LeitorBitalino):
@@ -31,7 +31,7 @@ class BitalinoLSL(LeitorBitalino):
                 f'Endereço MAC inválido: "{mac_addr}". Selecione o endereço MAC do Bitalino.'
             )
 
-        bitalinoRealLogger.logger.info(f'Resolvendo stream LSL do BITalino com MAC "{mac_addr}" ...')
+        logger.info(f'Resolvendo stream LSL do BITalino com MAC "{mac_addr}" ...')
         streams = resolve_byprop(prop='type', value=mac_addr, minimum=1, timeout=TIMEOUT_RESOLUCAO_SEGUNDOS)
 
         if not streams:
@@ -43,7 +43,7 @@ class BitalinoLSL(LeitorBitalino):
         # recover=False para que a queda do stream vire LostError em vez de a leitura
         # ficar travada tentando reconectar sozinha.
         self._stream = StreamInlet(streams[0], recover=False)
-        bitalinoRealLogger.logger.info(f'Stream do BITalino "{mac_addr}" conectado')
+        logger.info(f'Stream do BITalino "{mac_addr}" conectado')
 
     def _stream_aberto(self) -> StreamInlet:
         """Devolve o stream, exigindo que `conectar` já tenha rodado.
@@ -64,11 +64,17 @@ class BitalinoLSL(LeitorBitalino):
     def taxa_amostragem_nominal(self) -> int:
         return int(self._stream_aberto().info().nominal_srate())
 
-    def ler_amostra(self, timeout: float) -> tuple[list[float], float]:
+    def ler_amostra(self, timeout: float) -> tuple[list[float], float] | tuple[None, None]:
         try:
             amostra, timestamp = self._stream_aberto().pull_sample(timeout=timeout)
         except LostError as erro:
             raise ErroStreamPerdido(f'Stream do BITalino perdido durante a leitura de uma amostra: {erro}') from erro
+
+        # O pylsl devolve `(None, None)` quando o timeout expira sem sinal novo. O tipo
+        # de retorno diz isso explicitamente para que quem chama seja OBRIGADO a tratar:
+        # antes, o None seguia adiante e estourava um `IndexError` na indexação do canal.
+        if amostra is None:
+            return None, None
 
         return amostra, timestamp
 
@@ -93,4 +99,4 @@ class BitalinoLSL(LeitorBitalino):
 
         self._stream.close_stream()
         self._stream = None
-        bitalinoRealLogger.logger.info('Stream do BITalino encerrado')
+        logger.info('Stream do BITalino encerrado')

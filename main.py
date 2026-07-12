@@ -1,13 +1,29 @@
 ﻿import inspect
+import logging
+from pathlib import Path
 
 from ttkbootstrap.constants import NE, SE, N
+from ttkbootstrap.dialogs import Messagebox, Querybox
 
 from esquizocap import hardware
-from esquizocap.dominio.ciclo_aquisicao import CicloAquisicao, ModoAnalise, ResultadoCiclo
+from esquizocap.aplicacao import EventoErro, EventoParado, EventoResultado, ServicoAquisicao
+from esquizocap.dominio.ciclo_aquisicao import (
+    CicloAquisicao,
+    ControlesUsuario,
+    ModoAnalise,
+    ResultadoCiclo,
+)
 from esquizocap.dominio.predicao import carregar_modelo
-from esquizocap.infraestrutura import guitools
-from esquizocap.interface import arduino_gui, hovertip_config, loading_screen
+from esquizocap.hardware import constantes
+from esquizocap.infraestrutura import config, log, persistencia, recursos
+from esquizocap.interface import arduino_gui, hovertip_config, loading_screen, textos
 from esquizocap.interface.custom_gui import CreateCustomGui, ttk
+from esquizocap.interface.estado import (
+    EstadoApp,
+    SelecaoUsuario,
+    avaliar_prontidao,
+    mensagem_de_aquisicao,
+)
 
 ZERO = 0
 CHUNK_SIZE = 500
@@ -17,18 +33,25 @@ METERS_SIZE = 200
 METERS_TEXT_FONT = '-size 20 -weight bold'
 METERS_SUBTEXT_FONT = '-size 12 -weight bold'
 
-mainLogger: guitools.SetLogger = guitools.SetLogger(logfilepath=r'logs\EsquizoCapLogs.log', namelogger='mainGUI')
+# De quanto em quanto tempo a GUI drena a fila da thread de aquisição. É só o ritmo do
+# DESENHO — a aquisição roda no ritmo do BITalino, independentemente disto. 33 ms dá
+# ~30 quadros por segundo, que é mais do que suficiente para acompanhar uma cor mudando.
+INTERVALO_DRENAGEM_MS = 33
+
+# Índices do grid da janela principal. Isto é layout de interface, e vivia no
+# `configs.json` como se fosse configuração do usuário.
+COLUNAS_GRID = (0, 1, 2, 3, 4)
+LINHAS_GRID = (0, 1, 2, 3, 4, 5, 6, 7, 8)
+
+logger = logging.getLogger(__name__)
 
 class EsquizoCap:
-    def __init__(self, themename: str = 'solar', width: int = 1680, heigth: int = 1000) -> None:      
-        self.app_basepath: guitools.Path = guitools.Path.cwd()
-        self.fileconfigs: dict | None = guitools.loadconfigs(self.app_basepath)
-        self.gravacao_basepath = guitools.create_folder(self.app_basepath)
+    def __init__(self, configuracao: config.Configuracao, width: int = 1680, heigth: int = 1000) -> None:
+        self.config = configuracao
+        themename = configuracao.tema
+        self.gravacao_basepath: Path = configuracao.pasta_gravacoes
 
-        self.realTimeRender: str | None = guitools.findFilePath(filename=self.fileconfigs['executables']['Render'], jsonconfig=self.fileconfigs, basepath=self.app_basepath)
-        self.openSigPath: str | None = guitools.findFilePath(filename=self.fileconfigs['executables']['OpenSignals'], jsonconfig=self.fileconfigs)
-
-        self.custom_gui: CreateCustomGui = CreateCustomGui(iconpath=self.fileconfigs['icon'], themename=themename, width=width, heigth=heigth)
+        self.custom_gui: CreateCustomGui = CreateCustomGui(iconpath=str(recursos.ICONE), themename=themename, width=width, heigth=heigth)
         self.root: ttk.Window = self.custom_gui.root
         self.main_window: ttk.Frame = self.custom_gui.main_window
        
@@ -36,13 +59,13 @@ class EsquizoCap:
         self.__set_property(themename=themename)
         self.__set_frames()
         self.__set_grids(itens_to_grid=(self.title_frame, self.model_frame, self.arduino_frame, self.bitalino_frame, self.analysis_frame, self.status_frame, 
-                                       self.start_frame, self.notebook, self.tail_frame), columnspan=len(self.fileconfigs['nofcolumns']), frame_grid=True)
+                                       self.start_frame, self.notebook, self.tail_frame), columnspan=len(COLUNAS_GRID), frame_grid=True)
         self.__set_vars()
         self.__setTitlePhoto()
         self.__setwidgets(widgets=(self.__setmodel_widgets, self.__setarduino_widgets, self.__setbitalino_widgets, self.__setanalysis_widgets,
                                    self.__setStatusStart_widgets, self.__setmetersamp_widgets,self.__setmetersfreq_widgets, self.__setcolor_widgets))
         
-        self.theme_box = ttk.Combobox(master=self.custom_gui.title_bar, justify='center', values=self.fileconfigs['themes'], textvariable=self.theme_var, state='readonly', height=20, name='theme_box')
+        self.theme_box = ttk.Combobox(master=self.custom_gui.title_bar, justify='center', values=textos.TEMAS, textvariable=self.theme_var, state='readonly', height=20, name='theme_box')
         self.theme_box.grid(column=2, row=0, sticky=NE, padx=15)
         self.theme_box.bind('<<ComboboxSelected>>', lambda _: self.set_theme(self.theme_var.get()))
         
@@ -53,7 +76,7 @@ class EsquizoCap:
                                         (self.freq_hue_meter, self.freq_saturation_meter, self.freq_value_meter, self.freq_sampling_meter)))
 
         self.__set_grids(itens_to_grid=(self.status_update_label, self.start_button), 
-                         columnspan=len(self.fileconfigs['nofcolumns']))
+                         columnspan=len(COLUNAS_GRID))
 
         self.notebook.add(child=self.amp_meters_frame, text='Amplitude', sticky=N, state='normal')
         self.notebook.add(child=self.freq_meters_frame, text='Frequência', sticky=N, state='normal')
@@ -68,15 +91,25 @@ class EsquizoCap:
         
         self.set_theme(theme_selected=themename)
 
-        ttk.Sizegrip(master=self.main_window).grid(column=self.fileconfigs['nofcolumns'][-1], row=self.fileconfigs['nofrows'][-1], sticky=SE)
+        ttk.Sizegrip(master=self.main_window).grid(column=COLUNAS_GRID[-1], row=LINHAS_GRID[-1], sticky=SE)
         
         self.root.after(100, self.custom_gui.set_appwindow) # to see the icon on the task bar
         self.root.bind("<FocusIn>", self.custom_gui.deminimize) # to view the window by clicking on the window icon on the taskbar
+
+        # Os DOIS caminhos de saída precisam desligar o hardware. O "×" é um botão nosso
+        # (a janela não tem barra de título nativa), então o protocolo WM_DELETE_WINDOW
+        # sozinho não o cobriria — ele só pega o Alt+F4.
+        self.custom_gui.close_button.configure(command=self.ao_fechar)
+        self.root.protocol('WM_DELETE_WINDOW', self.ao_fechar)
+
+        # Estado inicial: ninguém escolheu nada ainda. Isto trava o botão "Começar" e
+        # escreve a primeira mensagem de status — o que o `do_check` fazia no 1º tique.
+        self.__ao_mudar_selecao()
     
     def __load_images(self) -> None:
-        self.title_photo: ttk.PhotoImage = ttk.PhotoImage(file=self.fileconfigs['title_photo'])
-        self.red_circle_img: ttk.PhotoImage = ttk.PhotoImage(file=self.fileconfigs['red_circle']).subsample(5,5)
-        self.green_circle_img: ttk.PhotoImage = ttk.PhotoImage(file=self.fileconfigs['green_circle']).subsample(5,5)
+        self.title_photo: ttk.PhotoImage = ttk.PhotoImage(file=str(recursos.FOTO_TITULO))
+        self.red_circle_img: ttk.PhotoImage = ttk.PhotoImage(file=str(recursos.CIRCULO_VERMELHO)).subsample(5,5)
+        self.green_circle_img: ttk.PhotoImage = ttk.PhotoImage(file=str(recursos.CIRCULO_VERDE)).subsample(5,5)
     
     def __sethovertips(self, classes: tuple, delay: int = 1000) -> None:
         properties: list[str] = [m for (m, v) in inspect.getmembers(self) if isinstance(v, classes)]
@@ -84,89 +117,88 @@ class EsquizoCap:
         tip_widgets: list = []
         for widget in properties:
             tip_widgets.append(getattr(self, widget))
-        tips_dict: dict = dict(sorted(self.fileconfigs['tips'].items()))
+        tips_dict: dict = dict(sorted(textos.TOOLTIPS.items()))
         hovertip_config.set_tooltips(widgets=tip_widgets, tips=tips_dict, bg='#bc951a', fg='white', delay=delay)
         
     def __set_property(self, themename: str) -> None:
-        mainLogger.logger.info('Configurando propriedades ...')
+        logger.info('Configurando propriedades ...')
         self.arduino: hardware.ControladorLedArduino = hardware.criar_arduino()
         self.bitalino: hardware.LeitorBitalino = hardware.criar_bitalino()
         self.selected_lumi_mode: int = ZERO
         self.bitalino_srate: int = 100
-        self.sampling_rate: int = 10
-        self.freq_runs: int = ZERO
-        self.amp_runs: int = ZERO
-        self.freq_resulta_faixa: str = None
-        self.aquisicao: bool = False
+        self.freq_resulta_faixa: str | None = None
         self.style: ttk.Style = ttk.Style(theme=themename)
-        self.after_action: list = []
+
+        # O estado é EXPLÍCITO agora. Antes era inferido comparando strings de StringVar,
+        # num `after(10 ms)` que rodava para sempre só para escolher a frase do status.
+        self.estado: EstadoApp = EstadoApp.CONFIGURANDO
+
+        # A aquisição não roda mais nesta thread. O serviço só existe entre o "Começar" e
+        # o "Parar"; fora disso é None, e isso é o que significa "não estamos adquirindo".
+        self.servico: ServicoAquisicao | None = None
+        self._agendamento_drenagem: str | None = None
 
     def set_model_path(self) -> None:
-        self.model_pathstring_var.set(self.fileconfigs['models'][0]) ## retirar dps ... provavelmente pq posso colocar essa string diretamente no widget
-        self.model_path: str = self.fileconfigs['models_path']['amp']
-        mainLogger.logger.info(f'Modelo de machine learning escolhido = {self.model_path}')
-
-    def __gravacao_basepath(self) -> None:
-        self.gravacao_basepath: str = guitools.askdirectory(title='Selecione a pasta para salvar os dados da aquisição e predição: ')
-        mainLogger.logger.info(f'Pasta de salvamento dos arquivos das gravaçãoes alterado. Novo = {self.gravacao_basepath}')
+        self.model_pathstring_var.set(textos.MODELOS_DISPONIVEIS[0]) ## retirar dps ... provavelmente pq posso colocar essa string diretamente no widget
+        self.model_path: str = self.config.caminho_modelo
+        logger.info(f'Modelo de machine learning escolhido = {self.model_path}')
 
     def set_theme(self, theme_selected) -> None:
         self.style.theme_use(themename=theme_selected)
         self.style.configure('TCombobox', arrowsize = 20) #"Helvetica", size = 15
         self.style.configure('TSizegrip', size=50)
         self.style.configure('.', font=self.custom_gui.font)
-        mainLogger.logger.info(f'Tema alterado. Novo = {theme_selected}')
+        logger.info(f'Tema alterado. Novo = {theme_selected}')
 
     def __set_grids(self, itens_to_grid: tuple[tuple], row: int = ZERO, columnspan: int | None = None, padx: int = 5, pady: int = 5, sticky: str = N, frame_grid: bool = False):
         if columnspan is None:
-            mainLogger.logger.info('Configurando os grids dos widgets ...')
+            logger.info('Configurando os grids dos widgets ...')
             for iterable in itens_to_grid:
                 for column, item in enumerate(iterable=iterable, start=ZERO):
-                    mainLogger.logger.info(f'Widget: configurando item {item} na coluna {column} e linha {row}, fixado em "{sticky}"')
+                    logger.info(f'Widget: configurando item {item} na coluna {column} e linha {row}, fixado em "{sticky}"')
                     item.grid(column=column, row=row, padx=padx, pady=pady, sticky=sticky)
         else:
             if frame_grid is False:
-                mainLogger.logger.info('Configurando grids com columnspan ...')
+                logger.info('Configurando grids com columnspan ...')
                 for column, item in enumerate(iterable=itens_to_grid, start=ZERO):
-                    mainLogger.logger.info(f'Widget: configurando item {item} com columnspan = {columnspan} na linha "{row}", fixado em "{sticky}"')
+                    logger.info(f'Widget: configurando item {item} com columnspan = {columnspan} na linha "{row}", fixado em "{sticky}"')
                     item.grid(columnspan=columnspan, row=row, padx=padx, pady=pady, sticky=sticky) # type: ignore
             else:
-                mainLogger.logger.info('Configurando Frame grids ...')
+                logger.info('Configurando Frame grids ...')
                 for row_index, frame in enumerate(iterable=itens_to_grid, start=ZERO):
-                    mainLogger.logger.info(f'Frame: configurando frame {frame} com columnspan = {columnspan} na linha {row_index}, fixado em "{sticky}"')
+                    logger.info(f'Frame: configurando frame {frame} com columnspan = {columnspan} na linha {row_index}, fixado em "{sticky}"')
                     frame.grid(columnspan=columnspan, row=row_index, sticky=sticky, padx=pady, pady=padx)
 
     def change_state(self, mutables: tuple, to: str = 'disabled') -> None:
         for mutable in mutables:
             if isinstance(mutable, ttk.Button):
-                mainLogger.logger.info(f'Alterando o estado do Botão "{mutable}" para {to}')
+                logger.info(f'Alterando o estado do Botão "{mutable}" para {to}')
                 mutable['state'] = to
             elif isinstance(mutable, ttk.Combobox):
                 if to == 'disabled':
-                    mainLogger.logger.info(f'Alterando o estado do Combobox "{mutable}" para {to}')
+                    logger.info(f'Alterando o estado do Combobox "{mutable}" para {to}')
                     mutable['state'] = to
                 else:
-                    mainLogger.logger.info(f'Alterando o estado do Combobox "{mutable}" para "readonly"')
+                    logger.info(f'Alterando o estado do Combobox "{mutable}" para "readonly"')
                     mutable['state'] = 'readonly'
 
     def get_lumi_mode(self) -> int:
-        for int_modo, str_modo in enumerate(self.fileconfigs['modos'], start=1):
-            if str_modo == self.arduino_lumin_var.get():
-                mainLogger.logger.info(f'Modo de iluminação escolhido = {int_modo}')
-                return int_modo        
+        indice = constantes.indice_do_modo(self.arduino_lumin_var.get())
+        logger.info(f'Modo de iluminação escolhido = {indice}')
+        return indice
 
     def __setTitlePhoto(self) -> None:
         self.title_label = ttk.Label(master=self.title_frame, padding=10, image=self.title_photo)
-        self.title_label.grid(columnspan=len(self.fileconfigs['nofcolumns']), sticky=N)
-        mainLogger.logger.info(f'Configurando a foto da janela principal. Foto escolhida = {self.title_photo}')
+        self.title_label.grid(columnspan=len(COLUNAS_GRID), sticky=N)
+        logger.info(f'Configurando a foto da janela principal. Foto escolhida = {self.title_photo}')
 
     def __setwidgets(self, widgets) -> None:
-        mainLogger.logger.info('Configurando todos os widgets ...')
+        logger.info('Configurando todos os widgets ...')
         for func in widgets:
             func()
 
     def __set_vars(self) -> None:
-        mainLogger.logger.info('Criando todas as variáveis ...')
+        logger.info('Criando todas as variáveis ...')
         self.gravar_var = ttk.BooleanVar(value=False)
         self.model_pathstring_var = ttk.StringVar(value='Selecione um modelo de machine learning ...')
         self.arduino_lumin_var = ttk.StringVar(value='Selecione um modo de luminosidade')
@@ -179,9 +211,78 @@ class EsquizoCap:
         self.status_update_var = ttk.StringVar(value='Selecione todas as opções disponíveis acima')
         self.theme_var = ttk.StringVar(value=self.root.style.theme_use())
         self.color_label_var = ttk.StringVar(value='Aguardando início da aquisição')
-        
+
+        # Reagir a mudanças, em vez de varrê-las 100 vezes por segundo. O `trace_add`
+        # dispara exatamente quando o usuário mexe em alguma coisa — que é o único
+        # momento em que a prontidão pode ter mudado.
+        for variavel in (
+            self.model_pathstring_var,
+            self.arduino_lumin_var,
+            self.arduino_porta_var,
+            self.arduino_string_var,
+            self.bitalino_macaddr_var,
+            self.bitalino_canal_var,
+            self.gravar_var,
+        ):
+            variavel.trace_add('write', self.__ao_mudar_selecao)
+
+    def __ao_mudar_selecao(self, *_args: object) -> None:
+        """Uma escolha do usuário mudou: reavalia o estado e atualiza o status.
+
+        Recebe `*_args` porque o Tk passa (nome, índice, operação) para o callback de
+        trace, e nada disso interessa aqui — a regra olha o retrato inteiro da seleção.
+        """
+        if self.estado in (EstadoApp.ADQUIRINDO, EstadoApp.PARANDO):
+            # Durante a aquisição os widgets estão travados; o status pertence à thread.
+            return
+
+        selecao = SelecaoUsuario(
+            modelo=self.model_pathstring_var.get(),
+            porta_arduino=self.arduino_porta_var.get(),
+            modo_luminosidade=self.arduino_lumin_var.get(),
+            arduino_conectado=self.arduino.esta_conectado,
+            canal_bitalino=self.bitalino_canal_var.get(),
+            mac_bitalino=self.bitalino_macaddr_var.get(),
+        )
+
+        self.estado, mensagem = avaliar_prontidao(
+            selecao=selecao, macs_validos=self.config.macs_bitalino
+        )
+        self.status_update_var.set(value=mensagem)
+        self.start_button['state'] = 'normal' if self.estado is EstadoApp.PRONTO else 'disabled'
+
+    def __controles_atuais(self) -> ControlesUsuario:
+        """Lê os medidores e monta o objeto que a thread de aquisição vai consumir.
+
+        SÓ pode ser chamado da thread da GUI: `amountusedvar.get()` é uma chamada ao Tk.
+        A thread de aquisição nunca faz isso — ela recebe o resultado já pronto.
+        """
+        if self.analysis_var.get() == 'Amplitude':
+            return ControlesUsuario(
+                saturacao=self.amp_saturation_meter.amountusedvar.get(),
+                brilho=self.amp_value_meter.amountusedvar.get(),
+                # O medidor está em milissegundos; o domínio raciocina em segundos.
+                intervalo_predicao_segundos=self.amp_sampling_meter.amountusedvar.get() / 1000,
+            )
+
+        # No modo Frequência a cadência já vem do tamanho da janela: não há intervalo.
+        return ControlesUsuario(
+            saturacao=self.freq_saturation_meter.amountusedvar.get(),
+            brilho=self.freq_value_meter.amountusedvar.get(),
+        )
+
+    def __ao_mudar_medidor(self, *_args: object) -> None:
+        """O usuário mexeu num medidor: repassa os novos controles à thread de aquisição.
+
+        É este empurrão que substitui a thread ir "buscar" o valor no widget — o que
+        seria tocar em Tkinter de fora da thread da interface, e é comportamento
+        indefinido.
+        """
+        if self.servico is not None:
+            self.servico.atualizar_controles(self.__controles_atuais())
+
     def __set_frames(self) -> None:
-        mainLogger.logger.info('Setting FRAMES ...')
+        logger.info('Setting FRAMES ...')
         self.title_frame = ttk.Frame(master=self.main_window, name='title_frame')   #row 0
         self.model_frame = ttk.Frame(master=self.main_window, name='model_frame')   #row 1
         self.arduino_frame = ttk.Frame(master=self.main_window, name='arduino_frame') #row 2
@@ -196,44 +297,44 @@ class EsquizoCap:
         self.general_status_frame = ttk.Frame(master=self.main_window, name='general_status_frame') # row 8
     
     def __setmodel_widgets(self)-> None:
-        mainLogger.logger.info('Setting MODEL widgets')
+        logger.info('Setting MODEL widgets')
         self.model_label = ttk.Label(master=self.model_frame, text='Selecione um modelo:', justify='left', name='model_label')     
-        self.model_box = ttk.Combobox(master=self.model_frame, justify='center', width=100, textvariable=self.model_pathstring_var, state='readonly', values=self.fileconfigs['models'], name='model_box')
+        self.model_box = ttk.Combobox(master=self.model_frame, justify='center', width=100, textvariable=self.model_pathstring_var, state='readonly', values=textos.MODELOS_DISPONIVEIS, name='model_box')
         self.model_box.bind('<<ComboboxSelected>>', lambda _: self.set_model_path()) 
         self.gravar_button = ttk.Checkbutton(master=self.model_frame, text='Gravar aquisição', bootstyle='round-toggle', variable=self.gravar_var, name='gravar_button', style='Roundtoggle')
 
     def __setarduino_widgets(self)-> None:
-        mainLogger.logger.info('Setting ARDUINO widgets')
+        logger.info('Setting ARDUINO widgets')
         self.arduino_label = ttk.Label(master=self.arduino_frame, text='Arduino: ', name='arduino_label')
         self.arduino_ports_box = ttk.Combobox(master=self.arduino_frame, textvariable=self.arduino_porta_var, width=40, justify='center', postcommand= lambda: arduino_gui.listar_portas(controlador=self.arduino, list=self.arduino_ports_box), state='readonly', name='ard_port_box')
-        self.arduino_vel_box = ttk.Combobox(master=self.arduino_frame, values=self.fileconfigs['velocidade_pre'], textvariable=self.arduino_veloc_var, width=40, height=15, justify='center', state='readonly', name='ard_vel_box')
-        self.arduino_lumin_box = ttk.Combobox(master=self.arduino_frame, values=self.fileconfigs['modos'], textvariable=self.arduino_lumin_var, width=40, justify='center', state='readonly', name='ard_lumi_box')  
+        self.arduino_vel_box = ttk.Combobox(master=self.arduino_frame, values=constantes.BAUDRATES_SUPORTADOS, textvariable=self.arduino_veloc_var, width=40, height=15, justify='center', state='readonly', name='ard_vel_box')
+        self.arduino_lumin_box = ttk.Combobox(master=self.arduino_frame, values=constantes.MODOS_LUMINOSIDADE, textvariable=self.arduino_lumin_var, width=40, justify='center', state='readonly', name='ard_lumi_box')  
         self.arduino_button = ttk.Button(master=self.arduino_frame, textvariable=self.arduino_string_var, command= lambda: arduino_gui.connect(arduino=self.arduino, port=self.arduino_porta_var.get(), baudrate=self.arduino_veloc_var.get(), 
-                                                                                                                                       modo=self.arduino_lumin_var.get(), configsfile=self.fileconfigs, 
-                                                                                                                                       string=self.arduino_string_var, botao=self.arduino_button, selfmode=self.selected_lumi_mode,
+                                                                                                                                       modo=self.arduino_lumin_var.get(),
+                                                                                                                                       string=self.arduino_string_var, botao=self.arduino_button,
                                                                                                                                        boxes=(self.arduino_ports_box, self.arduino_vel_box, self.arduino_lumin_box),
                                                                                                                                        status={'labelimg':self.arduino_statuslabel, 'red':self.red_circle_img, 'green':self.green_circle_img}))
     def __setbitalino_widgets(self)-> None:
-        mainLogger.logger.info('Setting BITALINO widgets')
+        logger.info('Setting BITALINO widgets')
         self.bitalino_label = ttk.Label(master=self.bitalino_frame, text='Bitalino: ', name='bit_label')
         self.bitalino_canais_box = ttk.Combobox(master=self.bitalino_frame, textvariable=self.bitalino_canal_var, width=40, justify='center', state='readonly', name='bit_canais_box', 
-                                                postcommand= lambda: guitools.canais_bitalino(canais=self.fileconfigs['canais_bitalino'], box=self.bitalino_canais_box))
-        self.bitalino_mac_box = ttk.Combobox(master=self.bitalino_frame, values=self.fileconfigs['mac_addr'], textvariable=self.bitalino_macaddr_var, width=40, justify='center', state='readonly', name='bit_mac_box')
+                                                values=constantes.CANAIS_BITALINO)
+        self.bitalino_mac_box = ttk.Combobox(master=self.bitalino_frame, values=self.config.macs_bitalino, textvariable=self.bitalino_macaddr_var, width=40, justify='center', state='readonly', name='bit_mac_box')
         
     def __setanalysis_widgets(self) -> None:
-        mainLogger.logger.info('Setting ANALYSIS widgets')
+        logger.info('Setting ANALYSIS widgets')
         self.analysis_label_frame = ttk.LabelFrame(master=self.analysis_frame, labelanchor='n', text='Escolha o modo de analise')
-        self.analysis_label_frame.grid(columnspan=len(self.fileconfigs['nofcolumns']), column=0, row=0, padx=10, pady=10)
+        self.analysis_label_frame.grid(columnspan=len(COLUNAS_GRID), column=0, row=0, padx=10, pady=10)
         self.analysis_box = ttk.Combobox(master=self.analysis_label_frame, justify='center', values=['Frequência', 'Amplitude'], textvariable=self.analysis_var, state='readonly')
         self.analysis_box.grid(column=0, row=0, padx=10, pady=10, sticky=N)
         
     def __setStatusStart_widgets(self) -> None:
-        mainLogger.logger.info('Setting START STATUS widgets')
+        logger.info('Setting START STATUS widgets')
         self.status_update_label = ttk.Label(master=self.status_frame, textvariable=self.status_update_var, justify='center')
         self.start_button = ttk.Button(master=self.start_frame, text='Começar aquisição', width=30, command=self.__start)
         
     def __setmetersamp_widgets(self) -> None:
-        mainLogger.logger.info('Setting AMP METERS widgets')
+        logger.info('Setting AMP METERS widgets')
         self.amp_hue_meter = ttk.Meter(master=self.amp_meters_frame, interactive=False, metertype='semi', amountused=ZERO, amounttotal=METER_MAX, meterthickness=METER_THICKNESS,
                                        showtext=True, subtext='Hue', stepsize=1, wedgesize=3, metersize=METERS_SIZE, textfont=METERS_TEXT_FONT, subtextfont=METERS_SUBTEXT_FONT)
         self.amp_saturation_meter = ttk.Meter(master=self.amp_meters_frame, interactive=True,  metertype='semi', amountused=METER_MAX, amounttotal=METER_MAX, meterthickness=METER_THICKNESS,
@@ -242,9 +343,13 @@ class EsquizoCap:
                                          showtext=True, subtext='Brilho', stepsize=2, metersize=METERS_SIZE, textfont=METERS_TEXT_FONT, subtextfont=METERS_SUBTEXT_FONT)
         self.amp_sampling_meter = ttk.Meter(master=self.amp_meters_frame, interactive=True,  metertype='semi', amountused=900, amounttotal=1000, showtext=True, subtext='Amostragem', textright='ms', meterthickness=METER_THICKNESS,
                                               textleft='1x', stepsize=10, stripethickness=2, amountmin=100, arcrange=180, arcoffset=180, metersize=METERS_SIZE, textfont=METERS_TEXT_FONT, subtextfont=METERS_SUBTEXT_FONT)
-    
+
+        for medidor in (self.amp_saturation_meter, self.amp_value_meter, self.amp_sampling_meter):
+            medidor.amountusedvar.trace_add('write', self.__ao_mudar_medidor)
+
+
     def __setmetersfreq_widgets(self) -> None:
-        mainLogger.logger.info('Setting FREQ METERS widgets')
+        logger.info('Setting FREQ METERS widgets')
         self.freq_hue_meter = ttk.Meter(master=self.freq_meters_frame, interactive=False, metertype='semi', amountused=ZERO, amounttotal=METER_MAX, meterthickness=METER_THICKNESS,
                                         showtext=True, subtext='Hue', stepsize=1, wedgesize=3, metersize=METERS_SIZE, textfont=METERS_TEXT_FONT, subtextfont=METERS_SUBTEXT_FONT)
         self.freq_saturation_meter = ttk.Meter(master=self.freq_meters_frame, interactive=True,  metertype='semi', amountused=METER_MAX, amounttotal=METER_MAX, meterthickness=METER_THICKNESS,
@@ -253,153 +358,122 @@ class EsquizoCap:
                                           showtext=True, subtext='Brilho', stepsize=2, metersize=METERS_SIZE, textfont=METERS_TEXT_FONT, subtextfont=METERS_SUBTEXT_FONT)
         self.freq_sampling_meter = ttk.Meter(master=self.freq_meters_frame, interactive=True,  metertype='semi', amountused=3000, amounttotal=5000, showtext=True, subtext='Tamanho da Amostra', textright='ms', meterthickness=METER_THICKNESS,
                                              stepsize=CHUNK_SIZE, stripethickness=2, amountmin=1000, arcrange=180, arcoffset=180, metersize=METERS_SIZE, textfont=METERS_TEXT_FONT, subtextfont=METERS_SUBTEXT_FONT)
-    
+
+        # O "Tamanho da Amostra" NÃO entra aqui: ele define a janela de análise, que é
+        # fixada na construção do ciclo e travada durante a aquisição.
+        for medidor in (self.freq_saturation_meter, self.freq_value_meter):
+            medidor.amountusedvar.trace_add('write', self.__ao_mudar_medidor)
+
+
     def __setcolor_widgets(self) -> None:
-        mainLogger.logger.info('Setting COLOR UPDATE widgets')
+        logger.info('Setting COLOR UPDATE widgets')
         self.color_label = ttk.Label(master=self.tail_frame, textvariable=self.color_label_var, foreground='white', justify='center')
         self.color_label.grid(column=3, row=0, sticky=N, padx=10, pady=10)
 
     def __setgerenal_status_widgets(self) -> None:
         self.arduino_statuslabel = ttk.Label(master=self.general_status_frame, text='Arduino status:', image=self.red_circle_img, compound='right', justify='right')
-        self.general_status_frame.grid(column=0, row=self.fileconfigs['nofrows'][-1], sticky='sw')
+        self.general_status_frame.grid(column=0, row=LINHAS_GRID[-1], sticky='sw')
         self.arduino_statuslabel.grid(column=0, row=0, padx=2, pady=2)
         
-    def do_check(self) -> None:
-        
-        self.main_window.after(ms=self.sampling_rate, func=self.do_check)
-        
-        if self.aquisicao is False:
-                
-            if self.model_pathstring_var.get() not in self.fileconfigs['models']:
-                return self.status_update_var.set(value='Selecione o modelo de machine learning')
-                
-            if 'COM' not in self.arduino_porta_var.get() or self.arduino_lumin_var.get() not in self.fileconfigs['modos']:
-                return self.status_update_var.set(value='Configure o Arduino')
-            
-            if 'COM' in self.arduino_porta_var.get() and self.arduino_lumin_var.get() in self.fileconfigs['modos'] and self.arduino_string_var.get() == 'Conectar':
-                return self.status_update_var.set(value='Arduino configurado! Pressione "Conectar"')
-            
-            if self.bitalino_canal_var.get() =='Selecione o canal ativo do Bitalino' or self.bitalino_macaddr_var.get() not in self.fileconfigs['mac_addr']:
-                return self.status_update_var.set(value='Configure o Bitalino')
-                
-            if self.arduino_string_var.get() == 'Desconectar' and self.model_pathstring_var.get() in self.fileconfigs['models'] and self.bitalino_canal_var.get() != 'Selecione o canal ativo do Bitalino' and self.bitalino_macaddr_var.get() in self.fileconfigs['mac_addr']:
-                return self.status_update_var.set(value='Pressione "Começar aquisição"')
-            
-            else:
-                return self.status_update_var.set(value='Selecione todas as opções acima')
-                                      
-        else:
-            if self.after_action.__len__() > 1:
-                self.after_action.remove(self.after_action[0])
-                
-            self.after_action.append(self.main_window.after(ms=self.sampling_rate, func=self.__pullSamples))
-            
-            if self.gravar_var.get() is True:
-                self.status_update_var.set(value='Executando e gravando a aquisição de dados')
-            else:
-                self.status_update_var.set(value='Executando aquisição de dados')
-                       
     def __start(self) -> None:
-        
-        if self.aquisicao is False:
-            
-            if self.model_pathstring_var.get() in self.fileconfigs['models']: # verifica se é igual a algumo modelo do arquivo json (ex: Preditor HSV para Amplitude e Frequencia)
-                mainLogger.logger.info(f'Carregando modelo "{self.model_path}" ... ')
-                self.model = carregar_modelo(caminho_modelo=self.model_path)
-            else:
-                mainLogger.logger.error('Usuário não escolheu um modelo para realizar as predições')
-                return guitools.Messagebox.show_error(title='Error!', message='Escolha um modelo para realizar as predições.')
+        """Conecta o BITalino, monta o núcleo e entrega a aquisição a uma thread.
 
-            if self.arduino_string_var.get() != 'Desconectar':
-                mainLogger.logger.warning('Usuário não conectou o arduino antes de começar a aquisição')
-                return guitools.Messagebox.show_warning(title='Aviso!', message='Conecte o arduino antes de iniciar a aquisição.')
-
-            try:
-                self.bitalino_canal_int = int(self.bitalino_canal_var.get())
-                mainLogger.logger.info(f'Canal do BITALINO escolhido para aquisição = A{self.bitalino_canal_int}')
-            except ValueError:
-                mainLogger.logger.warning('Usuário não escolheu um canal ativo do BITALINO para aquisição')
-                return guitools.Messagebox.show_warning(message='Selecione o canal ativo do Bitalino antes de começar a aquisição.')
-
-            try:
-                self.bitalino.conectar(mac_addr=self.bitalino_macaddr_var.get())
-            except hardware.ErroConexaoBitalino as erro:
-                mainLogger.logger.error(f'ERRO no Bitalino: {erro}')
-                return guitools.Messagebox.show_error(title='Bitalino error!', message=f'{erro}')
-
-            self.bitalino_srate = self.bitalino.taxa_amostragem_nominal()
-            mainLogger.logger.info(f'Sampling rate do BITALINO = {self.bitalino_srate}')
-            self.selected_lumi_mode = self.get_lumi_mode()
-
-            # O núcleo é montado aqui, e não no __init__, porque só agora existem todas as
-            # escolhas do usuário: modelo, canal, modo de análise e tamanho da janela.
-            self.ciclo = CicloAquisicao(
-                leitor=self.bitalino,
-                arduino=self.arduino,
-                modelo=self.model,
-                modo_analise=ModoAnalise(self.analysis_var.get()),
-                canal_bitalino=self.bitalino_canal_int,
-                modo_luminosidade=self.selected_lumi_mode,
-                tamanho_amostra_frequencia=self.freq_sampling_meter.amountusedvar.get(),
-            )
-
-            self.amp_array = guitools.numpy.array([]) #array para registrar o tempo de cada amostra de dado do eletrodo
-            self.freq_results = guitools.numpy.array([])
-            self.freq_timesamples = guitools.numpy.array([])
-
-            self.start_button.configure(command=self.__queryStop)
-            self.start_button['text'] = 'Parar aquisição'
-
-            self.change_state(mutables=self.mutable_wids, to='disabled')
-            self.freq_sampling_meter.configure(interactive=False)
-            
-            mainLogger.logger.info('Começando aquisição de dados ...')
-            self.aquisicao = True
-            self.__pullSamples()
-        
-    def __pullSamples(self) -> None:
-        """Roda um ciclo do núcleo e reflete o resultado na interface.
-
-        A GUI não faz mais aquisição nem predição: ela só escolhe os parâmetros que o
-        usuário controla (saturação, brilho), pede um ciclo ao `CicloAquisicao` e pinta
-        o `ResultadoCiclo` que voltar.
+        A partir daqui a GUI não lê mais o EEG: ela só drena a fila do serviço e pinta.
         """
+        if self.estado is not EstadoApp.PRONTO:
+            logger.warning(f'"Começar aquisição" pressionado no estado {self.estado.name}; ignorando.')
+            return
+
+        logger.info(f'Carregando modelo "{self.model_path}" ... ')
+        self.model = carregar_modelo(caminho_modelo=self.model_path)
+
+        self.bitalino_canal_int = int(self.bitalino_canal_var.get())
+        logger.info(f'Canal do BITALINO escolhido para aquisição = A{self.bitalino_canal_int}')
+
         try:
-            if self.analysis_var.get() == 'Amplitude':
-                self.notebook.select(self.amp_meters_frame)
-                self.sampling_rate = self.amp_sampling_meter.amountusedvar.get()
-                saturacao = self.amp_saturation_meter.amountusedvar.get()
-                brilho = self.amp_value_meter.amountusedvar.get()
-            else:
-                self.notebook.select(self.freq_meters_frame)
-                self.sampling_rate = CHUNK_SIZE
-                saturacao = self.freq_saturation_meter.amountusedvar.get()
-                brilho = self.freq_value_meter.amountusedvar.get()
+            self.bitalino.conectar(mac_addr=self.bitalino_macaddr_var.get())
+        except hardware.ErroConexaoBitalino as erro:
+            logger.error(f'ERRO no Bitalino: {erro}')
+            return Messagebox.show_error(title='Bitalino error!', message=f'{erro}')
 
-            resultado = self.ciclo.processar_amostra(saturacao=saturacao, brilho=brilho)
+        self.bitalino_srate = self.bitalino.taxa_amostragem_nominal()
+        logger.info(f'Sampling rate do BITALINO = {self.bitalino_srate}')
+        self.selected_lumi_mode = self.get_lumi_mode()
 
-            # No modo Frequência, um ciclo pode não produzir resultado: os blocos ainda
-            # estão sendo acumulados até fechar a janela de análise.
-            if resultado is not None:
-                self.__pintar_resultado(resultado)
+        modo = ModoAnalise(self.analysis_var.get())
+        self.notebook.select(
+            self.amp_meters_frame if modo is ModoAnalise.AMPLITUDE else self.freq_meters_frame
+        )
 
-                if self.gravar_var.get() is True:
-                    self.__registrar_resultado(resultado)
+        # O núcleo é montado aqui, e não no __init__, porque só agora existem todas as
+        # escolhas do usuário: modelo, canal, modo de análise e tamanho da janela.
+        self.ciclo = CicloAquisicao(
+            leitor=self.bitalino,
+            arduino=self.arduino,
+            modelo=self.model,
+            modo_analise=modo,
+            canal_bitalino=self.bitalino_canal_int,
+            modo_luminosidade=self.selected_lumi_mode,
+            tamanho_amostra_frequencia=self.freq_sampling_meter.amountusedvar.get(),
+        )
 
-            if self.analysis_var.get() != 'Amplitude':
-                self.color_label_var.set(
-                    value=f'Analisando amostras = {self.ciclo.amostras_acumuladas}/{self.ciclo.tamanho_amostra_frequencia}'
-                          f'{" | " + self.freq_resulta_faixa if self.freq_resulta_faixa is not None else ""}'
-                )
+        # A gravação passou a viver DENTRO do serviço. É o que permite a fila de desenho
+        # descartar resultados quando a interface não acompanha, sem perder dado gravado.
+        self.servico = ServicoAquisicao(ciclo=self.ciclo, gravar=self.gravar_var.get())
+        self.servico.atualizar_controles(self.__controles_atuais())
 
-        except (IndexError, hardware.ErroStreamPerdido, hardware.ErroConexaoBitalino) as error:
-            mainLogger.logger.exception(error)
-            self.aquisicao = False
-            msg: str = (f'{type(error).__name__} detectado. OpenSignals ou BITalino pode não estar '
-                        'funcionando corretamente. Verifique a conexão.')
-            mainLogger.logger.error(msg)
-            guitools.Messagebox.show_error(msg)
-            self.__stop()
+        self.freq_resulta_faixa = None
+        self.estado = EstadoApp.ADQUIRINDO
+
+        self.start_button.configure(command=self.__queryStop)
+        self.start_button['text'] = 'Parar aquisição'
+        self.change_state(mutables=self.mutable_wids, to='disabled')
+        self.freq_sampling_meter.configure(interactive=False)
+        self.status_update_var.set(value=mensagem_de_aquisicao(gravando=self.gravar_var.get()))
+
+        logger.info('Começando aquisição de dados ...')
+        self.servico.iniciar()
+        self.__drenar_eventos()
+
+    def __drenar_eventos(self) -> None:
+        """Consome o que a thread de aquisição publicou e reflete na tela.
+
+        Roda na thread da GUI, a cada `INTERVALO_DRENAGEM_MS`. Nunca bloqueia: se a fila
+        estiver vazia, sai na hora e a janela segue respondendo. É o único ponto em que
+        um resultado da aquisição toca em widget.
+        """
+        if self.servico is None:
+            return
+
+        for evento in self.servico.drenar():
+            match evento:
+                case EventoResultado():
+                    self.__pintar_resultado(evento.resultado)
+
+                case EventoErro():
+                    logger.error(f'A thread de aquisição reportou: {evento.erro}')
+                    Messagebox.show_error(title='Erro na aquisição!', message=evento.mensagem_usuario)
+
+                case EventoParado():
+                    logger.info(f'Aquisição encerrada. {evento.total_gravado} resultados gravados.')
+                    self.__finalizar_aquisicao()
+                    return
+
+        self.__pintar_progresso()
+        self._agendamento_drenagem = self.main_window.after(
+            ms=INTERVALO_DRENAGEM_MS, func=self.__drenar_eventos
+        )
+
+    def __pintar_progresso(self) -> None:
+        """Mostra o quanto falta para fechar a próxima janela de análise (modo Frequência)."""
+        if self.servico is None or self.ciclo.modo_analise is ModoAnalise.AMPLITUDE:
+            return
+
+        faixa = f' | {self.freq_resulta_faixa}' if self.freq_resulta_faixa is not None else ''
+        self.color_label_var.set(
+            value=f'Analisando amostras = {self.servico.progresso_janela}'
+                  f'/{self.ciclo.tamanho_amostra_frequencia}{faixa}'
+        )
 
     def __pintar_resultado(self, resultado: ResultadoCiclo) -> None:
         """Reflete um `ResultadoCiclo` nos widgets. Nenhuma lógica de negócio aqui."""
@@ -413,74 +487,137 @@ class EsquizoCap:
 
         self.color_label.configure(background=resultado.cor_hex)
 
-    def __registrar_resultado(self, resultado: ResultadoCiclo) -> None:
-        """Acumula o resultado para a exportação em Excel feita no `__stop`."""
-        if resultado.janela is None:
-            self.amp_runs += 1
-            self.amp_array = guitools.numpy.append(
-                self.amp_array, [resultado.timestamp, resultado.metrica_bruta, resultado.hue]
-            )
+    def __salvar_gravacao(self, resultados: list[ResultadoCiclo]) -> None:
+        """Pergunta o nome ao usuário e manda gravar.
+
+        Quem pergunta é a interface. A `persistencia` só recebe o caminho pronto — antes,
+        ela abria um diálogo no meio da função de dados.
+        """
+        modo: str = self.analysis_var.get()
+        nome_escolhido = Querybox.get_string(
+            prompt=f'Dê um nome para o arquivo EXCEL com os dados de {modo}:',
+            initialvalue=persistencia.nome_sugerido(modo),
+        )
+
+        if not nome_escolhido:
+            logger.warning('Usuário cancelou o salvamento. A gravação foi descartada.')
             return
 
-        self.freq_runs += 1
-        self.freq_results = guitools.numpy.append(
-            self.freq_results,
-            [self.freq_runs, resultado.timestamp, resultado.metrica_bruta,
-             resultado.potencia, resultado.hue, resultado.faixa_frequencia],
-        )
-        self.freq_timesamples = guitools.numpy.append(
-            self.freq_timesamples, (resultado.janela.amostras, resultado.janela.timestamps)
-        )
+        destino = Path(self.gravacao_basepath) / f'{nome_escolhido}.xlsx'
 
-    def __cancel_actions(self, action_list: list) -> None:
-        if action_list.__len__() > 0: 
-            for index, _ in enumerate(action_list):
-                self.main_window.after_cancel(action_list[index])
-            return mainLogger.logger.info(f'Lista com {action_list.__len__()} ações. Todas foram canceladas.')
-        return mainLogger.logger.warning(f'Lista de ações vazia. Nenhuma ação foi cancelada. Lista = {action_list}')
+        try:
+            persistencia.salvar_gravacao(resultados=resultados, destino=destino)
+        except persistencia.ErroDeGravacao as erro:
+            logger.error(str(erro))
+            Messagebox.show_error(title='Erro no salvamento de dados!', message=str(erro))
 
     def __queryStop(self) -> None:
-        self.aquisicao = False
-        self.__cancel_actions(self.after_action)
-        mainLogger.logger.info(f'Usuário selecionou "Parar aquisição".')
-        resp: None | str = guitools.Messagebox.yesno(message='Deseja parar a aquisição?', alert=True)
+        """Confirma com o usuário e pede a parada. NÃO espera aqui.
 
-        if resp == 'Yes':
-            self.__stop()
-        else:
-            self.aquisicao = True
-            return mainLogger.logger.info('Usuário escolheu voltar para a aquisição')
-    
-    def __stop(self) -> None:
-        mainLogger.logger.info('Parando a aquisição ...')
-        self.__cancel_actions(self.after_action)
+        A thread pode levar até ~1 s para perceber o pedido, se estiver no meio de uma
+        leitura bloqueante. Quem conclui o encerramento é o `EventoParado`, quando ele
+        chegar pela fila — daí o estado PARANDO no meio do caminho, que impede um segundo
+        clique de pedir a parada de novo.
+        """
+        if self.estado is not EstadoApp.ADQUIRINDO:
+            return
+
+        logger.info('Usuário selecionou "Parar aquisição".')
+
+        if Messagebox.yesno(message='Deseja parar a aquisição?', alert=True) != 'Yes':
+            logger.info('Usuário escolheu voltar para a aquisição')
+            return
+
+        self.estado = EstadoApp.PARANDO
+        self.status_update_var.set(value='Parando a aquisição ...')
+        self.start_button['state'] = 'disabled'
+
+        if self.servico is not None:
+            self.servico.parar()
+
+    def __finalizar_aquisicao(self) -> None:
+        """Fecha o hardware, oferece a gravação e devolve a interface ao estado ocioso.
+
+        Chamado ao receber o `EventoParado` — que a thread SEMPRE publica, tanto na parada
+        normal quanto depois de um erro. É por isso que uma falha do BITalino no meio da
+        aquisição também passa por aqui: não existe caminho de saída que esqueça de fechar
+        a porta serial.
+        """
+        if self.servico is None:
+            return
+
+        # A thread já terminou (o EventoParado é a última coisa que ela publica), mas o
+        # `parar()` também cobre o caso do erro, em que ninguém pediu a parada.
+        self.servico.parar()
+        resultados = self.servico.gravacao
+        self.servico = None
+        self._agendamento_drenagem = None
+
         self.bitalino.encerrar_stream()
         self.arduino.desconectar()
-        mainLogger.logger.info('Arduino e Bitalino desconectados.')
+        logger.info('Arduino e Bitalino desconectados.')
 
-        if self.freq_runs != ZERO:
-            guitools.salvar_dados(registros={'freq_time_samples':self.freq_timesamples, 'freq_results':self.freq_results},
-                                  basepath=self.gravacao_basepath, nrows=self.freq_runs, 
-                                  ncolumns=self.freq_sampling_meter.amountusedvar.get())
-
-        if self.amp_runs != ZERO:
-            guitools.salvar_dados(registros={'amp':self.amp_array}, basepath=self.gravacao_basepath, nrows=self.amp_runs)
+        if resultados:
+            self.__salvar_gravacao(resultados=resultados)
 
         self.arduino_string_var.set('Conectar')
         self.arduino_statuslabel.configure(image=self.red_circle_img)
         self.start_button['text'] = 'Começar aquisição'
         self.start_button.configure(command=self.__start)
+        self.start_button['state'] = 'normal'
         self.freq_sampling_meter.configure(interactive=True)
-
-        self.amp_runs = ZERO
-        self.freq_runs = ZERO
+        self.color_label_var.set(value='Aguardando início da aquisição')
 
         self.change_state(mutables=self.mutable_wids, to='enabled')
 
-if __name__ == '__main__':
-    loading_screen_ = loading_screen.LoadingScreen()
-    loading_screen_.execute(folderpath=r'images\\gif', duration=4500)
-    
-    app = EsquizoCap()
-    app.main_window.after(ms=10, func=app.do_check)
+        self.estado = EstadoApp.CONFIGURANDO
+        self.__ao_mudar_selecao()
+
+    def ao_fechar(self) -> None:
+        """Desligamento ordenado: para a thread e fecha o hardware ANTES de destruir a janela.
+
+        Antes, o "×" chamava `root.destroy()` direto: a porta serial e o stream do LSL
+        ficavam abertos até o processo morrer, e a próxima execução podia não conseguir
+        abrir a porta. Aqui a saída passa pelos mesmos context managers de sempre.
+        """
+        logger.info('Fechando o EsquizoCap ...')
+
+        if self.servico is not None:
+            self.servico.parar()
+            self.servico = None
+
+        # Idempotentes por contrato: chamar sem nunca ter conectado é seguro.
+        self.bitalino.encerrar_stream()
+        self.arduino.desconectar()
+
+        self.root.destroy()
+
+
+def main() -> None:
+    """Ponto de entrada: prepara o ambiente e sobe a interface.
+
+    A ordem importa. Logging e configuração são preparados ANTES de a GUI existir, para
+    que uma configuração inválida ou um asset faltando falhem com uma mensagem clara em
+    vez de virarem um erro obscuro do Tkinter no meio da montagem da janela.
+    """
+    log.configurar_logging(pasta_logs=recursos.PASTA_LOGS)
+
+    try:
+        recursos.validar()
+        configuracao = config.carregar()
+    except (recursos.ErroDeRecurso, config.ErroDeConfiguracao) as erro:
+        logger.critical(str(erro))
+        raise SystemExit(f'EsquizoCap não pôde iniciar:\n\n{erro}') from erro
+
+    loading_screen.LoadingScreen().execute(
+        folderpath=str(recursos.PASTA_GIF_CARREGAMENTO), duration=4500
+    )
+
+    # Sem `after(do_check)`: o estado da interface reage a mudanças (trace nas variáveis
+    # do Tk), em vez de ser varrido 100 vezes por segundo.
+    app = EsquizoCap(configuracao=configuracao)
     app.main_window.mainloop()
+
+
+if __name__ == '__main__':
+    main()

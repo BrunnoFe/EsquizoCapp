@@ -1,14 +1,16 @@
 """Implementação real do controlador de LED: fala com o Arduino via porta serial."""
 
+import logging
+
 import serial
 import serial.tools.list_ports
 
+from esquizocap.hardware.constantes import ENCODING_SERIAL
 from esquizocap.hardware.contratos import ControladorLedArduino, ErroConexaoArduino
-from esquizocap.infraestrutura.guitools import ENCODING_FORMAT, SetLogger
-
-arduinoRealLogger: SetLogger = SetLogger(namelogger='arduinoReal', logfilepath=r'logs\EsquizoCapLogs.log')
 
 TIMEOUT_SERIAL_SEGUNDOS: int = 1
+
+logger = logging.getLogger(__name__)
 
 
 class ArduinoSerial(ControladorLedArduino):
@@ -30,7 +32,7 @@ class ArduinoSerial(ControladorLedArduino):
 
     def listar_portas(self) -> list[str]:
         portas: list[str] = [str(porta) for porta in serial.tools.list_ports.comports()]
-        arduinoRealLogger.logger.info(f'Portas seriais disponíveis = {portas}')
+        logger.info(f'Portas seriais disponíveis = {portas}')
         return portas
 
     def conectar(self, porta: str, baudrate: int) -> None:
@@ -52,7 +54,7 @@ class ArduinoSerial(ControladorLedArduino):
                 'Verifique se outro programa está usando a porta.'
             )
 
-        arduinoRealLogger.logger.info(f'Arduino conectado na porta "{porta}" a {baudrate} baud')
+        logger.info(f'Arduino conectado na porta "{porta}" a {baudrate} baud')
 
     def desconectar(self) -> None:
         # Idempotente: o `__exit__` pode chamar isto mesmo se `conectar` nunca rodou
@@ -62,8 +64,23 @@ class ArduinoSerial(ControladorLedArduino):
             return
 
         self._porta_serial.close()
-        arduinoRealLogger.logger.info('Conexão serial com o Arduino encerrada')
+        logger.info('Conexão serial com o Arduino encerrada')
 
     def enviar_comando_cor(self, modo: int, hue: int, saturacao: int, brilho: int) -> None:
+        # Escrever numa porta fechada levanta `serial.PortNotOpenError` — uma exceção do
+        # pyserial, exatamente o que o contrato promete não deixar vazar. E o cabo USB
+        # arrancado no meio da aquisição vira `SerialException`. Os dois são a mesma coisa
+        # para quem chama: o Arduino sumiu.
+        if self._porta_serial.is_open is False:
+            raise ErroConexaoArduino(
+                'A porta serial do Arduino está fechada. Conecte o Arduino antes de enviar uma cor.'
+            )
+
         comando: str = f'({modo},{hue},{saturacao},{brilho})\n'
-        self._porta_serial.write(comando.encode(ENCODING_FORMAT))
+
+        try:
+            self._porta_serial.write(comando.encode(ENCODING_SERIAL))
+        except serial.SerialException as erro:
+            raise ErroConexaoArduino(
+                f'Falha ao enviar a cor para o Arduino: {erro}. Verifique se o cabo segue conectado.'
+            ) from erro

@@ -94,6 +94,11 @@ class ControladorLedArduino(ABC):
             hue: Matiz previsto pelo modelo, de 0 a 255.
             saturacao: Saturação, de 0 a 255 (vem do medidor da GUI, não do modelo).
             brilho: Brilho, de 0 a 255 (vem do medidor da GUI, não do modelo).
+
+        Raises:
+            ErroConexaoArduino: Se a porta estiver fechada, ou cair durante o envio (cabo
+                arrancado). O envio é "fire and forget" — não há ACK —, então isto cobre
+                falha de transporte, não falha do firmware.
         """
 
     def __enter__(self) -> Self:
@@ -146,14 +151,22 @@ class LeitorBitalino(ABC):
         """Taxa de amostragem declarada pelo stream, em Hz."""
 
     @abstractmethod
-    def ler_amostra(self, timeout: float) -> tuple[list[float], float]:
+    def ler_amostra(self, timeout: float) -> tuple[list[float], float] | tuple[None, None]:
         """Lê uma única amostra (um valor por canal) e seu timestamp.
 
         Usado no modo Amplitude, em que cada amostra vira uma predição de cor.
 
+        A leitura BLOQUEIA até haver sinal, e é assim que a aquisição acerta a cadência:
+        quem dita o ritmo é o dispositivo. Chamar isto mais devagar do que o dispositivo
+        produz NÃO amostra mais devagar — só acumula atraso, porque a amostra devolvida
+        é a mais ANTIGA do buffer, não a mais recente.
+
         Returns:
             Uma tupla `(canais, timestamp)`, onde `canais` tem um valor por canal do
             dispositivo — a aquisição indexa esse vetor pelo canal escolhido na GUI.
+
+            Ou `(None, None)` se o `timeout` expirar sem sinal novo. Isso NÃO é falha:
+            é um ciclo vazio, e quem chama deve simplesmente tentar de novo.
 
         Raises:
             ErroStreamPerdido: Se o stream cair durante a leitura.
@@ -164,11 +177,14 @@ class LeitorBitalino(ABC):
         """Lê um bloco de amostras de uma vez, com os timestamps correspondentes.
 
         Usado no modo Frequência, que acumula blocos até ter amostras suficientes
-        para a análise espectral.
+        para a análise espectral. Bloqueia até juntar `max_amostras` ou até o timeout.
 
         Returns:
             Uma tupla `(amostras, timestamps)`, onde `amostras` é uma lista de linhas
             e cada linha tem um valor por canal.
+
+            Pode vir com MENOS de `max_amostras` — inclusive vazia — se o timeout
+            expirar antes. Como no `ler_amostra`, isso é um ciclo vazio, não uma falha.
 
         Raises:
             ErroStreamPerdido: Se o stream cair durante a leitura.

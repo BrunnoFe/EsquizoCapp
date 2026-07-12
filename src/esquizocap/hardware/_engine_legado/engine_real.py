@@ -4,12 +4,15 @@ Lançava o executável do Godot e falava com ele por socket TCP. Nada mais impor
 módulo: a integração foi desligada, pendente de reescrita.
 """
 
+import logging
+
 from esquizocap.hardware._engine_legado import server
 from esquizocap.hardware._engine_legado.engine_protocolo import montar_mensagem_visual
 from esquizocap.hardware._engine_legado.interfaces_engine import ErroEngineDesconectada
-from esquizocap.infraestrutura.guitools import ENCODING_FORMAT, SetLogger, kill_process, runProcess
+from esquizocap.hardware.constantes import ENCODING_SERIAL
+from esquizocap.infraestrutura import processos
 
-engineRealLogger: SetLogger = SetLogger(namelogger='engineReal', logfilepath=r'logs\EsquizoCapLogs.log')
+logger = logging.getLogger(__name__)
 
 
 class EngineGodot:
@@ -36,20 +39,22 @@ class EngineGodot:
         return self._servidor.serverIp, self._servidor.port
 
     def iniciar(self) -> None:
-        runProcess(executablename=self._nome_executavel, path=self._caminho_executavel, forceclose=True)
+        processos.iniciar(
+            nome_executavel=self._nome_executavel, caminho=self._caminho_executavel, reiniciar=True
+        )
 
     def aguardar_conexao(self) -> None:
-        engineRealLogger.logger.info(f'Aguardando a engine conectar em {self._servidor.serverIp}:{self._servidor.port} ...')
+        logger.info(f'Aguardando a engine conectar em {self._servidor.serverIp}:{self._servidor.port} ...')
         self._servidor.start_listen()
 
     def enviar_cor(self, rgb: tuple[int, int, int]) -> None:
         mensagem: str = montar_mensagem_visual(rgb)
         try:
-            self._servidor.connection.send(mensagem.encode(ENCODING_FORMAT))
+            self._servidor.connection.send(mensagem.encode(ENCODING_SERIAL))
         except ConnectionResetError as erro:
             raise ErroEngineDesconectada(
                 f'A engine visual fechou a conexão ao receber "{mensagem}": {erro}'
             ) from erro
 
     def encerrar(self) -> None:
-        kill_process(self._nome_executavel)
+        processos.encerrar(self._nome_executavel)

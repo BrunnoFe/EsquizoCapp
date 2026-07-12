@@ -12,7 +12,7 @@ Uso (a partir da raiz do projeto):
 
 import argparse
 
-from esquizocap.dominio.ciclo_aquisicao import CicloAquisicao, ModoAnalise
+from esquizocap.dominio.ciclo_aquisicao import CicloAquisicao, ControlesUsuario, ModoAnalise
 from esquizocap.dominio.predicao import carregar_modelo
 from esquizocap.hardware.arduino_fake import ArduinoFake
 from esquizocap.hardware.bitalino_fake import BitalinoSintetico
@@ -54,11 +54,13 @@ def main() -> None:
             tamanho_amostra_frequencia=argumentos.tamanho_amostra,
         )
 
+        controles = ControlesUsuario(saturacao=argumentos.saturacao, brilho=argumentos.brilho)
+
         print(f'\n=== Modo {modo_analise.value} | {argumentos.ciclos} ciclos | hardware SIMULADO ===\n')
 
         resultados_produzidos: int = 0
         for volta in range(1, argumentos.ciclos + 1):
-            resultado = ciclo.processar_amostra(saturacao=argumentos.saturacao, brilho=argumentos.brilho)
+            resultado = ciclo.processar_amostra(controles=controles)
 
             if resultado is None:
                 print(

@@ -128,6 +128,30 @@ def gerar_parametros_visual(rgb: tuple[int, int, int]) -> ParametrosVisual:
     )
 
 
+@dataclass(frozen=True)
+class ControlesUsuario:
+    """O que o usuário controla ao vivo, enquanto a aquisição acontece.
+
+    Nada aqui vem do modelo nem do sinal: são os medidores da interface. Estão juntos
+    num objeto IMUTÁVEL de propósito — a aquisição roda numa thread separada, e trocar
+    um valor congelado inteiro é uma operação atômica, enquanto ler três campos soltos
+    de um objeto mutável poderia pegar metade de uma mudança do usuário.
+    """
+
+    saturacao: int
+    """Saturação do HSV, de 0 a 255."""
+
+    brilho: int
+    """Brilho (V do HSV), de 0 a 255. NÃO confundir com `ParametrosVisual.brilho_shader`."""
+
+    intervalo_predicao_segundos: float = 0.0
+    """Quanto sinal deve passar entre duas predições. Só vale no modo Amplitude.
+
+    Zero significa "prever a cada amostra lida". O modo Frequência ignora este campo:
+    lá a cadência já é dada pelo tamanho da janela de análise.
+    """
+
+
 @dataclass
 class JanelaAnalisada:
     """A janela bruta de sinal que originou uma análise de frequência.
@@ -195,9 +219,18 @@ class ResultadoCiclo:
 class CicloAquisicao:
     """Executa o ciclo ler -> pré-processar -> prever -> distribuir.
 
-    No modo Frequência um ciclo nem sempre produz resultado: os blocos são acumulados
-    até atingir `tamanho_amostra_frequencia`, e só então há uma predição. Por isso
-    `processar_amostra` devolve `None` enquanto ainda está acumulando.
+    Um ciclo nem sempre produz resultado, e por motivos diferentes em cada modo:
+
+    - **Frequência**: os blocos são acumulados até atingir `tamanho_amostra_frequencia`,
+      e só então há uma predição.
+    - **Amplitude**: toda amostra é lida (é o que evita atraso), mas a predição só sai a
+      cada `ControlesUsuario.intervalo_predicao_segundos` de sinal.
+
+    Nos dois casos, "sem resultado" é `None` — nunca uma exceção, e nunca uma pausa.
+
+    A classe é sequencial e SEM sincronização: ela não sabe que existe thread. Quem a
+    roda numa thread (ver `esquizocap.aplicacao.servico_aquisicao`) é responsável por
+    usá-la de um lado só.
 
     `tamanho_amostra_frequencia` é apenas o tamanho da janela de análise (quantas
     amostras acumular). A taxa de amostragem usada na análise espectral vem sempre de
@@ -224,6 +257,7 @@ class CicloAquisicao:
 
         self._amostras_acumuladas: numpy.ndarray = numpy.array([])
         self._timestamps_acumulados: numpy.ndarray = numpy.array([])
+        self._timestamp_ultima_predicao: float | None = None
 
     @property
     def modo_analise(self) -> ModoAnalise:
@@ -238,42 +272,83 @@ class CicloAquisicao:
     def tamanho_amostra_frequencia(self) -> int:
         return self._tamanho_amostra_frequencia
 
-    def processar_amostra(self, saturacao: int, brilho: int) -> ResultadoCiclo | None:
+    def processar_amostra(self, controles: ControlesUsuario) -> ResultadoCiclo | None:
         """Roda um ciclo completo: lê o EEG, prevê a cor e a envia ao Arduino.
 
+        Cada chamada consome exatamente uma leitura do stream. Chamar isto em laço,
+        sem pausa, é o uso pretendido: quem dita a cadência é o próprio dispositivo,
+        porque a leitura bloqueia até haver sinal. NÃO espace as chamadas com um timer
+        para "amostrar mais devagar" — o LSL entrega a amostra mais ANTIGA do buffer, e
+        ler mais devagar do que o dispositivo produz faz o atraso crescer sem limite.
+        Para espaçar as PREDIÇÕES, use `ControlesUsuario.intervalo_predicao_segundos`.
+
         Args:
-            saturacao: Saturação a usar, de 0 a 255. Não vem do modelo: é escolha de
-                quem chama (hoje, um medidor da interface).
-            brilho: Brilho (V do HSV) a usar, de 0 a 255. Idem.
+            controles: Saturação, brilho e cadência de predição — tudo o que o usuário
+                ajusta ao vivo. Nada disso vem do modelo.
 
         Returns:
-            O `ResultadoCiclo` — que traz o `ParametrosVisual` aninhado —, ou `None` no
-            modo Frequência enquanto ainda não houver amostras suficientes para a
-            análise espectral.
+            O `ResultadoCiclo` — que traz o `ParametrosVisual` aninhado — ou `None`
+            quando o ciclo consumiu uma leitura sem produzir predição: no modo
+            Frequência, enquanto a janela de análise não fecha; no modo Amplitude,
+            enquanto não passou `intervalo_predicao_segundos` desde a última predição.
 
         Raises:
             ErroStreamPerdido: Se o stream do BITalino cair durante a leitura.
+            ErroConexaoArduino: Se a porta serial cair ao enviar a cor.
         """
         if self._modo_analise is ModoAnalise.AMPLITUDE:
-            return self._processar_amplitude(saturacao=saturacao, brilho=brilho)
-        return self._processar_frequencia(saturacao=saturacao, brilho=brilho)
+            return self._processar_amplitude(controles=controles)
+        return self._processar_frequencia(controles=controles)
 
-    def _processar_amplitude(self, saturacao: int, brilho: int) -> ResultadoCiclo:
-        amostra, timestamp = self._leitor.ler_amostra(timeout=TIMEOUT_LEITURA_SEGUNDOS)
+    def _deve_prever(self, timestamp: float, intervalo_segundos: float) -> bool:
+        """Decide se já passou sinal suficiente para uma nova predição (modo Amplitude).
+
+        O relógio usado é o do PRÓPRIO SINAL (o timestamp da amostra), não o relógio de
+        parede. Assim "uma predição a cada 900 ms" significa 900 ms de EEG, e não 900 ms
+        de execução — que é o que o usuário quer dizer, e o que sobrevive a uma thread
+        que travou por um instante.
+        """
+        if intervalo_segundos <= 0.0 or self._timestamp_ultima_predicao is None:
+            return True
+        return (timestamp - self._timestamp_ultima_predicao) >= intervalo_segundos
+
+    def _processar_amplitude(self, controles: ControlesUsuario) -> ResultadoCiclo | None:
+        leitura = self._leitor.ler_amostra(timeout=TIMEOUT_LEITURA_SEGUNDOS)
+
+        # O leitor devolve `(None, None)` quando o timeout expira sem sinal. Antes isso
+        # virava um `IndexError` lá na frente, e a GUI o traduzia como "o hardware
+        # falhou". Um timeout não é falha: é só um ciclo sem leitura.
+        if leitura[0] is None:
+            return None
+
+        amostra, timestamp = leitura
+
+        # A amostra foi LIDA de qualquer forma — é isso que impede o buffer do LSL de
+        # acumular atraso. O que o intervalo controla é só a PREDIÇÃO.
+        if not self._deve_prever(
+            timestamp=timestamp, intervalo_segundos=controles.intervalo_predicao_segundos
+        ):
+            return None
+
+        self._timestamp_ultima_predicao = timestamp
         amplitude = pre_processamento.extrair_amplitude(amostra=amostra, canal=self._canal_bitalino)
 
         return self._prever_e_distribuir(
             metrica=float(amplitude),
             faixa=None,
-            saturacao=saturacao,
-            brilho=brilho,
+            controles=controles,
             timestamp=timestamp,
         )
 
-    def _processar_frequencia(self, saturacao: int, brilho: int) -> ResultadoCiclo | None:
+    def _processar_frequencia(self, controles: ControlesUsuario) -> ResultadoCiclo | None:
         bloco, timestamps = self._leitor.ler_bloco(
             timeout=TIMEOUT_LEITURA_SEGUNDOS, max_amostras=TAMANHO_BLOCO_LEITURA
         )
+
+        # Bloco vazio = o timeout expirou sem sinal novo. Não é erro; é só um ciclo sem
+        # leitura. Sair cedo evita empilhar arrays vazios no acumulador.
+        if not bloco:
+            return None
 
         sinal = pre_processamento.extrair_sinal_do_bloco(bloco=bloco, canal=self._canal_bitalino)
         self._amostras_acumuladas = numpy.append(self._amostras_acumuladas, sinal)
@@ -298,8 +373,7 @@ class CicloAquisicao:
         resultado = self._prever_e_distribuir(
             metrica=float(analise.frequencia),
             faixa=analise.faixa,
-            saturacao=saturacao,
-            brilho=brilho,
+            controles=controles,
             timestamp=float(self._timestamps_acumulados[-1]),
             potencia=float(analise.potencia),
             janela=janela,
@@ -316,12 +390,14 @@ class CicloAquisicao:
         self,
         metrica: float,
         faixa: str | None,
-        saturacao: int,
-        brilho: int,
+        controles: ControlesUsuario,
         timestamp: float,
         potencia: float | None = None,
         janela: JanelaAnalisada | None = None,
     ) -> ResultadoCiclo:
+        saturacao: int = controles.saturacao
+        brilho: int = controles.brilho
+
         hue: int = prever_hue(modelo=self._modelo, metrica=metrica)
         cor_hex, rgb = hsv_para_rgb_hex(hue=hue, saturacao=saturacao, brilho=brilho)
 
