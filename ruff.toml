@@ -1,0 +1,19 @@
+# Configuração mínima do ruff (lint + formatação) para o EsquizoCap.
+# Rode `ruff check` e `ruff format` antes de considerar uma mudança pronta.
+
+line-length = 120
+target-version = "py312"
+
+# Ignora o ambiente virtual e o export do Godot na varredura.
+extend-exclude = [".venv", "engine"]
+
+[lint]
+# Conjunto enxuto: erros do pyflakes (F), estilo pycodestyle (E),
+# imports (I) e modernização de sintaxe (UP).
+select = ["E", "F", "I", "UP"]
+
+# E501 (linha longa) fica desligado: main.py e main_nooverride.py são legado com
+# centenas de linhas acima de 200 colunas, e ligar a regra faria `ruff check`
+# falhar sempre, inutilizando o lint como portão. Reative quando o legado for
+# quebrado em linhas menores.
+ignore = ["E501"]

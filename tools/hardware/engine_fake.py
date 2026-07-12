@@ -1,0 +1,44 @@
+"""Implementação fake da engine visual: nem processo do Godot, nem socket."""
+
+from tools.guitools import SetLogger
+from tools.hardware.engine_protocolo import montar_mensagem_visual
+
+engineFakeLogger: SetLogger = SetLogger(namelogger='engineFake', logfilepath=r'logs\EsquizoCapLogs.log')
+
+ENDERECO_SIMULADO: tuple[str, int] = ('127.0.0.1', 5050)
+
+
+class EngineSimulada:
+    """Finge ser a engine do Godot, registrando em log o que seria enviado.
+
+    Diferença importante para a real: `aguardar_conexao` retorna imediatamente, em
+    vez de bloquear num `accept()`. Sem isso a GUI congelaria esperando um Godot que
+    nunca vai conectar, e a aquisição não poderia ser exercitada sem o binário.
+
+    A mensagem é montada pelo mesmo código da engine real
+    (`engine_protocolo.montar_mensagem_visual`), então o formato não diverge.
+    """
+
+    def __init__(self) -> None:
+        self.ultima_mensagem: str | None = None
+        self.mensagens_enviadas: int = 0
+
+    @property
+    def endereco(self) -> tuple[str, int]:
+        return ENDERECO_SIMULADO
+
+    def iniciar(self) -> None:
+        engineFakeLogger.logger.info('[FAKE] Engine simulada "iniciada" (nenhum processo do Godot foi lançado)')
+
+    def aguardar_conexao(self) -> None:
+        engineFakeLogger.logger.info('[FAKE] Engine simulada conectada de imediato (sem accept() bloqueante)')
+
+    def enviar_cor(self, rgb: tuple[int, int, int]) -> None:
+        self.ultima_mensagem = montar_mensagem_visual(rgb)
+        self.mensagens_enviadas += 1
+        engineFakeLogger.logger.debug(f'[FAKE] Mensagem que iria para o Godot = {self.ultima_mensagem!r}')
+
+    def encerrar(self) -> None:
+        engineFakeLogger.logger.info(
+            f'[FAKE] Engine simulada encerrada após {self.mensagens_enviadas} mensagens'
+        )

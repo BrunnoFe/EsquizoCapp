@@ -1,0 +1,14 @@
+numpy==2.5.1
+openpyxl==3.1.5
+pandas==3.0.3
+psutil==7.2.2
+# pylsl DEVE ficar em 1.16.2: da 1.18 em diante o pacote não exporta mais
+# `LostError`, exceção que a aquisição captura em main.py.
+pylsl==1.16.2
+pyserial==3.5
+scikit_learn==1.9.0
+scipy==1.18.0
+# ttkbootstrap >= 1.20 é obrigatório no Python 3.14: a 1.10.1 depende de
+# `PIL.Image.CUBIC` (removido no Pillow 10) e o Pillow < 10 não compila no 3.14.
+# A 1.20 deixou de reexportar as constantes de ancoragem e o módulo `font`.
+ttkbootstrap==1.20.4
