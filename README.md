@@ -10,7 +10,7 @@ para uma instalação de arte que expõe atividade eletrofisiológica como exper
   de LED reagindo). É a imagem que "vende" o projeto em 3 segundos.
 -->
 
-> ⚠️ Projeto Windows-only, de uso artístico/experimental — não é um dispositivo médico.
+> ⚠️ Projeto Windows-only, de uso artístico/experimental e não é um dispositivo médico.
 
 ---
 
@@ -189,42 +189,9 @@ ruff check .        # lint
 ruff format --check .  # formatação
 ```
 
-O que **não** tem cobertura automatizada, de propósito — está documentado em
-[`TESTES_MANUAIS.md`](TESTES_MANUAIS.md):
-
-- A interface gráfica (Tkinter é caro e frágil de testar automaticamente).
-- Os caminhos das implementações reais que exigem o hardware físico ligado.
-
----
-
-## 📚 Documentação completa
-
-Este README é a porta de entrada. Para se aprofundar:
-
-| Documento | O que traz |
-|---|---|
-| [`CLAUDE.md`](CLAUDE.md) | Mapa de módulos, comandos, pontos críticos — a referência mais densa do repositório. |
-| [`ARCHITECTURE.md`](ARCHITECTURE.md) | Fluxo de dados fim a fim, protocolos (serial, LSL), o desenho de concorrência da thread de aquisição, e os pontos frágeis conhecidos. |
-| [`DECISOES_PENDENTES.md`](DECISOES_PENDENTES.md) | Comportamentos do código original preservados de propósito, e as decisões em aberto sobre eles. |
-| [`PLANO_ACAO.md`](PLANO_ACAO.md) | O plano de trabalho vivo: o que já foi feito e o que falta, por ordem de risco. |
-| [`TESTES_MANUAIS.md`](TESTES_MANUAIS.md) | O checklist do que só dá para verificar com o hardware físico na mão. |
-| [`src/esquizocap/hardware/_engine_legado/README.md`](src/esquizocap/hardware/_engine_legado/README.md) | A integração com uma engine visual em Godot, hoje desligada e arquivada. |
-
 ---
 
 ## 🔧 Stack técnica
 
 Python · Tkinter/ttkbootstrap · scikit-learn · pylsl (Lab Streaming Layer) · pyserial ·
 scipy · pandas/openpyxl · pytest · mypy · ruff
-
----
-
-## ⚠️ Limitações conhecidas
-
-- **Não é um dispositivo médico**: as classificações de banda de EEG e a predição de
-  cor são para fins artísticos/expressivos, não diagnósticos.
-- **Windows-only**: o código usa `ctypes.windll` para integração com a barra de tarefas.
-- **O modelo de ML é simples**: uma árvore de decisão sobre um único escalar (amplitude
-  *ou* frequência dominante). O treino não está neste repositório — só o artefato
-  `.pickle`.
-- **A engine visual Godot está desligada** (ver o README arquivado acima).
