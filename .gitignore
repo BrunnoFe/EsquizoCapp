@@ -179,3 +179,14 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+#IA
+.claude/
+CLAUDE.md
+ARCHITECTURE.md
+TESTES_MANUAIS.md
+
+#folders
+engine/
+logs/
+tests/
