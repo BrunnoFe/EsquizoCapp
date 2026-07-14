@@ -5,6 +5,10 @@ from pathlib import Path
 from typing import Any, Protocol, cast
 
 
+class ErroDeModelo(Exception):
+    """O arquivo do modelo existe no caminho configurado, mas não pôde ser carregado."""
+
+
 class ModeloPreditor(Protocol):
     """Contrato mínimo do modelo: só o `predict` do scikit-learn é usado.
 
@@ -23,12 +27,23 @@ def carregar_modelo(caminho_modelo: str | Path) -> ModeloPreditor:
     O modelo foi treinado fora deste repositório: só o artefato existe aqui. Carregar
     um pickle treinado em outra versão do scikit-learn emite `InconsistentVersionWarning`
     e pode gerar predições inválidas em silêncio — ver DECISOES_PENDENTES.md.
+
+    Raises:
+        ErroDeModelo: Se o arquivo não puder ser lido ou não contiver um pickle válido.
+            Um pickle corrompido levanta uma família inteira de exceções diferentes
+            (`EOFError`, `AttributeError`, `UnpicklingError`, ...); traduzi-las para um
+            erro só é o que permite a quem chama tratar "modelo inválido" num lugar.
     """
-    with open(file=caminho_modelo, mode='rb') as arquivo_modelo:
-        # `pickle.load` devolve `Any` por natureza: o que vem do arquivo só é conhecido
-        # em runtime. O cast afirma o contrato que esperamos; se o pickle contiver outra
-        # coisa, o erro aparece na primeira chamada a `predict`.
-        return cast(ModeloPreditor, pickle.load(file=arquivo_modelo))
+    try:
+        with open(file=caminho_modelo, mode='rb') as arquivo_modelo:
+            # `pickle.load` devolve `Any` por natureza: o que vem do arquivo só é conhecido
+            # em runtime. O cast afirma o contrato que esperamos; se o pickle contiver outra
+            # coisa, o erro aparece na primeira chamada a `predict`.
+            return cast(ModeloPreditor, pickle.load(file=arquivo_modelo))
+    except (OSError, pickle.UnpicklingError, EOFError, AttributeError, ImportError) as erro:
+        raise ErroDeModelo(
+            f'Não foi possível carregar o modelo em "{caminho_modelo}": {erro}'
+        ) from erro
 
 
 def prever_hue(modelo: ModeloPreditor, metrica: float) -> int:

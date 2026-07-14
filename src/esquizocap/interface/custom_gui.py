@@ -12,8 +12,10 @@ from ttkbootstrap.constants import NE, NSEW, W
 class CreateCustomGui:
     def __init__(self, iconpath: str, themename: str = 'solar', width: int = 1680, heigth: int = 100) -> None:       
         self.root = ttk.Window(themename=themename, overrideredirect=True, minsize=(1366,960)) # root (your app doesn't go in root, it goes in window)
-        self.root.iconbitmap(bitmap=r'images\\esquizo_ico.ico')
-        self.root.iconbitmap(default=r'images\\esquizo_ico.ico')
+        # O caminho vem de `infraestrutura.recursos`, via `iconpath`. Estava fixo aqui,
+        # duplicando o asset e ignorando o parâmetro que a própria classe recebia.
+        self.root.iconbitmap(bitmap=iconpath)
+        self.root.iconbitmap(default=iconpath)
         
         self.user_screen_width: int = self.root.winfo_screenwidth()
         self.user_screen_height: int = self.root.winfo_screenheight()
