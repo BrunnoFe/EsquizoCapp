@@ -12,15 +12,13 @@ dependencies = [
     "openpyxl",
     "pandas",
     "psutil",
+    "PySide6>=6.5",
     # pylsl DEVE ficar em 1.16.2: da 1.18 em diante o pacote não exporta mais
     # `LostError`, exceção que a aquisição captura.
     "pylsl==1.16.2",
     "pyserial",
     "scikit-learn",
     "scipy",
-    # ttkbootstrap >= 1.20 é obrigatório no Python 3.14: a 1.10.1 depende de
-    # `PIL.Image.CUBIC` (removido no Pillow 10) e o Pillow < 10 não compila no 3.14.
-    "ttkbootstrap>=1.20",
 ]
 
 [project.optional-dependencies]
@@ -46,8 +44,9 @@ where = ["src"]
 [tool.mypy]
 python_version = "3.12"
 files = ["src/esquizocap"]
-# O legado ainda não tem tipos; checá-lo agora só produziria ruído que ninguém leria.
-exclude = '(_engine_legado|interface|infraestrutura)'
+# interface_qt/: Property/Slot do PySide6 não tem stubs amigáveis ao mypy estrito.
+# _engine_legado/: arquivado, não roda. infraestrutura/: ainda não tipada (PLANO_ACAO.md).
+exclude = '(_engine_legado|interface_qt|infraestrutura)'
 
 # Estrito nas camadas que já foram tipadas: núcleo, bordas de hardware e orquestração.
 [[tool.mypy.overrides]]

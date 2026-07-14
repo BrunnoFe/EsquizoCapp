@@ -17,9 +17,17 @@ from dataclasses import dataclass
 from enum import Enum, auto
 
 from esquizocap.hardware.constantes import CANAIS_BITALINO, MODOS_LUMINOSIDADE
-from esquizocap.interface.textos import MODELOS_DISPONIVEIS
 
 TEXTO_CANAL_NAO_ESCOLHIDO: str = 'Selecione o canal ativo do Bitalino'
+
+MODELOS_DISPONIVEIS: tuple[str, ...] = ('Preditor HSV baseado em Amplitude',)
+"""Nomes dos modelos oferecidos no seletor.
+
+Hoje há um só, e a escolha não muda nada: o caminho do modelo vem da configuração
+(`Configuracao.caminho_modelo`). Ver PLANO_ACAO.md, item 1.10 — dívida preexistente,
+não introduzida por esta integração. Vivia em `interface/textos.py` (Tkinter, hoje
+arquivado); movida para cá porque é a única consumidora restante.
+"""
 
 # O combobox entrega o canal como texto; a constante do hardware é `int`. A conversão
 # fica aqui, num lugar só, em vez de espalhar `str()` pela regra.

@@ -194,3 +194,5 @@ logs/
 tests/
 files/
 godot/
+.vscode/
+interface_tkinter_legado/
