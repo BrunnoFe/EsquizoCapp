@@ -41,7 +41,7 @@ ApplicationWindow {
     Item {
         id: shell
         anchors.fill: parent
-        layer.enabled: !controller.fullscreen
+        layer.enabled: !controller.telaCheia
         layer.effect: OpacityMask {
             maskSource: Rectangle {
                 width: shell.width; height: shell.height; radius: 16
@@ -56,7 +56,7 @@ ApplicationWindow {
     // ===================================================================
     Rectangle {
         id: rail
-        visible: !controller.fullscreen
+        visible: !controller.telaCheia
         width: 76; anchors { top: parent.top; bottom: parent.bottom; left: parent.left }
         color: "#0b0b0e"
         z: 5
@@ -75,8 +75,8 @@ ApplicationWindow {
             // status do hardware (o LSL não é mais exibido)
             ColumnLayout {
                 spacing: 18; Layout.alignment: Qt.AlignHCenter
-                StatusDot { label: "ARD"; ok: controller.connARD }
-                StatusDot { label: "BIT"; ok: controller.connBIT }
+                StatusDot { label: "ARD"; ok: controller.arduinoConectado }
+                StatusDot { label: "BIT"; ok: controller.bitalinoConectado }
             }
 
             Item { Layout.fillHeight: true }
@@ -87,7 +87,7 @@ ApplicationWindow {
                 RailButton { iconName: "sliders"; tip: "Configurações do app"; small: true
                     onClicked: settingsPanel.open = true }
                 RailButton { iconName: "expand"; tip: "Modo tela cheia"; small: true
-                    onClicked: controller.toggleFullscreen() }
+                    onClicked: controller.alternarTelaCheia() }
                 RailButton { glyph: "i"; tip: "Sobre"; small: true; italic: true }
             }
         }
@@ -119,10 +119,10 @@ ApplicationWindow {
                 horizontalOffset: 0; verticalOffset: -parent.height*0.06
                 gradient: Gradient {
                     GradientStop { position: 0.0
-                        color: controller.acquiring
-                            ? Qt.rgba(controller.liveColor.r, controller.liveColor.g, controller.liveColor.b, 0.18)
+                        color: controller.adquirindo
+                            ? Qt.rgba(controller.corAoVivo.r, controller.corAoVivo.g, controller.corAoVivo.b, 0.18)
                             : Qt.rgba(0.05,0.29,0.32,0.13) }
-                    GradientStop { position: Math.min(0.75, 0.52 + 0.18*controller.glow); color: "transparent" }
+                    GradientStop { position: Math.min(0.75, 0.52 + 0.18*controller.intensidadeGlow); color: "transparent" }
                 }
                 Behavior on opacity { NumberAnimation { duration: 500 } }
             }
@@ -133,7 +133,7 @@ ApplicationWindow {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.verticalCenter: parent.verticalCenter
             width: parent.width; height: 240
-            opacity: controller.eegOpacity / 100
+            opacity: controller.opacidadeTracoEegPercentual / 100
             clip: true
             Row {
                 id: eegRow
@@ -143,16 +143,16 @@ ApplicationWindow {
                     model: 2
                     EegTrace {
                         width: stage.width; height: 240
-                        stroke: controller.liveColor
-                        lineW: controller.eegWidth
-                        yScale: controller.yScale / 100
+                        stroke: controller.corAoVivo
+                        lineW: controller.larguraTracoEeg
+                        yScale: controller.escalaEixoYMicroVolts / 100
                     }
                 }
             }
             NumberAnimation {
                 target: eegRow; property: "ux"
                 from: 0; to: stage.width
-                duration: controller.animSpeed * 1000
+                duration: controller.velocidadeAnimacaoSegundos * 1000
                 loops: Animation.Infinite; running: true
             }
         }
@@ -164,7 +164,7 @@ ApplicationWindow {
         // na tira fininha que a altura implícita do RowLayout ocupava.
         MouseArea {
             id: dragBand
-            visible: !controller.fullscreen
+            visible: !controller.telaCheia
             anchors { top: parent.top; left: parent.left; right: parent.right }
             height: 64
             onPressed: win.startSystemMove()
@@ -173,7 +173,7 @@ ApplicationWindow {
         // ---------- TOP BAR ----------
         RowLayout {
             id: topbar
-            visible: !controller.fullscreen
+            visible: !controller.telaCheia
             anchors { top: parent.top; left: parent.left; right: parent.right
                       topMargin: 20; leftMargin: 22; rightMargin: 22 }
             spacing: 12
@@ -196,7 +196,7 @@ ApplicationWindow {
             RowLayout {
                 spacing: 16; Layout.leftMargin: 12
                 WinBtn { kind: "min"; onClicked: win.showMinimized() }
-                WinBtn { kind: "max"; onClicked: controller.toggleFullscreen() }
+                WinBtn { kind: "max"; onClicked: controller.alternarTelaCheia() }
                 WinBtn { kind: "close"; onClicked: win.close() }
             }
         }
@@ -208,15 +208,15 @@ ApplicationWindow {
 
             Item {
                 Layout.alignment: Qt.AlignHCenter
-                width: controller.orbSize; height: controller.orbSize
+                width: controller.tamanhoOrbita; height: controller.tamanhoOrbita
                 Behavior on width  { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
                 Behavior on height { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
 
                 // anel cônico girando
                 Item {
                     id: ring; anchors.fill: parent
-                    opacity: controller.acquiring ? 1 : 0.25
-                    Behavior on opacity { NumberAnimation { duration: controller.colorFade*1000 } }
+                    opacity: controller.adquirindo ? 1 : 0.25
+                    Behavior on opacity { NumberAnimation { duration: controller.duracaoTransicaoCorSegundos*1000 } }
                     ConicalGradient {
                         id: conic; anchors.fill: parent
                         source: Rectangle { width: ring.width; height: ring.height; radius: width/2; visible: false }
@@ -237,20 +237,20 @@ ApplicationWindow {
                                 width: ring.width; height: ring.height
                                 radius: width/2
                                 color: "transparent"
-                                border.width: controller.ringWidth
+                                border.width: controller.larguraAnelPx
                                 border.color: "white"
                             }
                         }
                         RotationAnimator on rotation {
                             from: 0; to: 360
-                            duration: controller.ringSpeed * 1000
+                            duration: controller.velocidadeAnelSegundos * 1000
                             loops: Animation.Infinite; running: true
                         }
                     }
                     layer.enabled: true
                     layer.effect: Glow {
-                        radius: 16 * controller.glow; samples: 24; spread: 0.2
-                        color: controller.acquiring ? controller.liveColor : "transparent"
+                        radius: 16 * controller.intensidadeGlow; samples: 24; spread: 0.2
+                        color: controller.adquirindo ? controller.corAoVivo : "transparent"
                     }
                 }
 
@@ -258,19 +258,19 @@ ApplicationWindow {
                 Rectangle {
                     id: orb
                     anchors.centerIn: parent
-                    width: parent.width - controller.ringWidth*2 - 20
+                    width: parent.width - controller.larguraAnelPx*2 - 20
                     height: width; radius: width/2
                     color: "transparent"
-                    scale: controller.pulse
+                    scale: controller.pulsacao
                     // gradiente radial real:
                     Rectangle { anchors.fill: parent; radius: width/2; color: "transparent"
                         RadialGradient {
                             anchors.fill: parent
                             horizontalOffset: -parent.width*0.12; verticalOffset: -parent.height*0.18
                             gradient: Gradient {
-                                GradientStop { position: 0.0;  color: controller.lightColor }
-                                GradientStop { position: 0.46; color: controller.liveColor }
-                                GradientStop { position: 1.0;  color: controller.darkColor }
+                                GradientStop { position: 0.0;  color: controller.corClara }
+                                GradientStop { position: 0.46; color: controller.corAoVivo }
+                                GradientStop { position: 1.0;  color: controller.corEscura }
                             }
                         }
                         layer.enabled: true
@@ -280,21 +280,21 @@ ApplicationWindow {
 
                     layer.enabled: true
                     layer.effect: Glow {
-                        radius: 96 * controller.glow; samples: 40; spread: 0.15
-                        color: controller.acquiring ? controller.liveColor : "transparent"
+                        radius: 96 * controller.intensidadeGlow; samples: 40; spread: 0.15
+                        color: controller.adquirindo ? controller.corAoVivo : "transparent"
                     }
 
                     ColumnLayout {
                         anchors.centerIn: parent; spacing: 9
                         RowLayout {
                             Layout.alignment: Qt.AlignHCenter; spacing: 5
-                            Text { text: controller.orbBig; color: "#04252b"
+                            Text { text: controller.orbitaTextoPrincipal; color: "#04252b"
                                 font.family: "'Fraunces', Georgia, serif"; font.pixelSize: 46 }
-                            Text { text: controller.orbUnit; color: "#04252b"
+                            Text { text: controller.orbitaUnidade; color: "#04252b"
                                 font.family: monoFam; font.pixelSize: 18; font.bold: true
                                 Layout.alignment: Qt.AlignBottom; bottomPadding: 6 }
                         }
-                        Text { text: controller.orbSub; color: "#0a3d44"
+                        Text { text: controller.orbitaSubtexto; color: "#0a3d44"
                             font.pixelSize: 11; font.letterSpacing: 1.5
                             Layout.alignment: Qt.AlignHCenter }
                     }
@@ -305,14 +305,14 @@ ApplicationWindow {
             RowLayout {
                 Layout.alignment: Qt.AlignHCenter; spacing: 7
                 Repeater {
-                    model: controller.bandModel
+                    model: controller.bandasEegModel
                     Rectangle {
                         id: pilula
                         radius: 20; height: 26
                         // largura medida sempre em negrito: a banda ativa não pode
                         // alargar a pílula e empurrar as vizinhas de lado
                         implicitWidth: reguaBanda.implicitWidth + 24
-                        color: modelData.active ? controller.liveColor : Qt.rgba(1,1,1,0.05)
+                        color: modelData.active ? controller.corAoVivo : Qt.rgba(1,1,1,0.05)
                         opacity: modelData.dim ? 0.4 : 1
                         Behavior on color { ColorAnimation { duration: 400 } }
                         Text { id: reguaBanda; visible: false; text: modelData.name
@@ -326,7 +326,7 @@ ApplicationWindow {
 
             Text {
                 Layout.alignment: Qt.AlignHCenter
-                text: controller.colorHex + " · " + controller.hsvReadout
+                text: controller.corHex + " · " + controller.leituraHsv
                 color: "#7fbcc2"; font.family: monoFam; font.pixelSize: 13; font.letterSpacing: 2
             }
         }
@@ -334,7 +334,7 @@ ApplicationWindow {
         // ---------- CONTROLES AO VIVO (colapsáveis, topo-direita) ----------
         ColumnLayout {
             id: liveCtl
-            visible: controller.acquiring
+            visible: controller.adquirindo
             anchors { top: parent.top; right: parent.right; topMargin: 80; rightMargin: 30 }
             spacing: 0; z: 6
             property bool open: false
@@ -358,22 +358,22 @@ ApplicationWindow {
                     id: liveCol; anchors.fill: parent; anchors.margins: 16; spacing: 12
                     Text { text: "CONTROLES AO VIVO"; color: dim; font.pixelSize: 10; font.letterSpacing: 1.4 }
                     LabeledSlider { label: "Saturação"; from: 0; to: 255
-                        value: controller.sat; readout: controller.sat
-                        accent: controller.liveColor
-                        onMoved: controller.sat = value }
+                        value: controller.saturacao; readout: controller.saturacao
+                        accent: controller.corAoVivo
+                        onMoved: controller.saturacao = value }
                     LabeledSlider { label: "Brilho"; from: 0; to: 255
-                        value: controller.val; readout: controller.val
-                        accent: controller.liveColor
-                        onMoved: controller.val = value }
+                        value: controller.brilho; readout: controller.brilho
+                        accent: controller.corAoVivo
+                        onMoved: controller.brilho = value }
                     LabeledSlider {
-                        label: controller.thirdLabel
-                        from: controller.isAmp ? 100 : 128
-                        to:   controller.isAmp ? 2000 : 2048
-                        stepSize: controller.isAmp ? 50 : 32
-                        value: controller.isAmp ? controller.amostragem : controller.janela
-                        readout: controller.thirdReadout; accent: controller.liveColor
-                        onMoved: controller.isAmp ? controller.amostragem = value
-                                                  : controller.janela = value }
+                        label: controller.rotuloControleAmostragem
+                        from: controller.modoAmplitude ? 100 : 128
+                        to:   controller.modoAmplitude ? 2000 : 2048
+                        stepSize: controller.modoAmplitude ? 50 : 32
+                        value: controller.modoAmplitude ? controller.intervaloAmostragemMs : controller.tamanhoJanelaAmostras
+                        readout: controller.leituraControleAmostragem; accent: controller.corAoVivo
+                        onMoved: controller.modoAmplitude ? controller.intervaloAmostragemMs = value
+                                                  : controller.tamanhoJanelaAmostras = value }
                 }
             }
         }
@@ -387,16 +387,16 @@ ApplicationWindow {
             spacing: 3; z: 2
             Repeater {
                 // o model é a CONTAGEM de fitas (int estável). Antes o Repeater de
-                // dentro usava `controller.ledColors` como model: uma lista nova a
+                // dentro usava `controller.coresLeds` como model: uma lista nova a
                 // cada tick, o que fazia o Qt destruir e recriar todos os delegates.
-                model: controller.numFitas
+                model: controller.quantidadeFitas
                 LedStrip {
                     Layout.fillWidth: true; Layout.preferredHeight: 8
-                    cores: controller.ledColors
-                    gap: controller.ledGap
-                    layer.enabled: controller.acquiring && controller.ledGlow > 0
-                    layer.effect: Glow { radius: controller.ledGlow; samples: 12
-                                         color: controller.liveColor; spread: 0.3 }
+                    cores: controller.coresLeds
+                    gap: controller.espacamentoLedsPx
+                    layer.enabled: controller.adquirindo && controller.brilhoLedsPx > 0
+                    layer.effect: Glow { radius: controller.brilhoLedsPx; samples: 12
+                                         color: controller.corAoVivo; spread: 0.3 }
                 }
             }
         }
@@ -404,7 +404,7 @@ ApplicationWindow {
         // ---------- TRANSPORTE ----------
         Rectangle {
             id: transport
-            visible: !controller.fullscreen
+            visible: !controller.telaCheia
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
             height: 62; color: Qt.rgba(0.024,0.024,0.031,0.6)
             Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: stroke }
@@ -415,7 +415,7 @@ ApplicationWindow {
                 spacing: 14
                 Button {
                     id: btnParar
-                    visible: controller.acquiring
+                    visible: controller.adquirindo
                     // tamanho próprio: antes o background lia o implicitWidth do
                     // contentItem, criando uma dependência circular que deformava o botão
                     implicitWidth: 122; implicitHeight: 40
@@ -437,12 +437,12 @@ ApplicationWindow {
                                 anchors.verticalCenter: parent.verticalCenter }
                         }
                     }
-                    onClicked: controller.stop()
+                    onClicked: controller.pararAquisicao()
                 }
                 Button {
                     id: btnComecar
-                    visible: !controller.acquiring
-                    enabled: controller.podeIniciar
+                    visible: !controller.adquirindo
+                    enabled: controller.podeIniciarAquisicao
                     opacity: enabled ? 1 : 0.5
                     implicitWidth: 190; implicitHeight: 40
                     padding: 0
@@ -454,11 +454,11 @@ ApplicationWindow {
                     }
                     contentItem: Text { text: "Começar aquisição"; color: "#042026"; font.bold: true
                         font.pixelSize: 14; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    onClicked: controller.start()
+                    onClicked: controller.iniciarAquisicao()
                 }
                 // pílula GRAVANDO
                 Rectangle {
-                    visible: controller.acquiring && controller.recording
+                    visible: controller.adquirindo && controller.gravando
                     radius: 20; height: 28; implicitWidth: grow.implicitWidth + 22
                     color: Qt.rgba(0.886,0.325,0.294,0.14); border.color: Qt.rgba(0.886,0.325,0.294,0.3)
                     RowLayout { id: grow; anchors.centerIn: parent; spacing: 7
@@ -473,15 +473,15 @@ ApplicationWindow {
                     color: "#6f9096"; font.family: monoFam; font.pixelSize: 12
                 }
                 Item { Layout.fillWidth: true }
-                Text { text: controller.thirdReadout; color: dim; font.pixelSize: 12 }
-                Text { text: "Canal " + controller.canal + " · " + controller.sensor; color: dim; font.pixelSize: 12 }
+                Text { text: controller.leituraControleAmostragem; color: dim; font.pixelSize: 12 }
+                Text { text: "Canal " + controller.canalBitalino + " · " + controller.sensor; color: dim; font.pixelSize: 12 }
             }
         }
 
         // ---------- sair da tela cheia ----------
         Button {
             id: btnSairTela
-            visible: controller.fullscreen
+            visible: controller.telaCheia
             anchors { top: parent.top; left: parent.left; topMargin: 16; leftMargin: 20 }
             z: 12
             implicitWidth: 150; implicitHeight: 34
@@ -494,7 +494,7 @@ ApplicationWindow {
             contentItem: Text { text: "Sair da tela cheia"
                 color: btnSairTela.hovered ? "#f0eef2" : "#c3d6d9"; font.pixelSize: 12
                 horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-            onClicked: controller.toggleFullscreen()
+            onClicked: controller.alternarTelaCheia()
         }
 
         // ================= PAINEL DE SETUP (esquerda, desliza) =================
@@ -510,62 +510,62 @@ ApplicationWindow {
                 Accordion { title: "Modelo de ML"; dotColor: verde; expanded: true
                     body: Dropdown {
                         width: parent.width
-                        model: controller.modelosMl
-                        currentIndex: controller.modelosMl.indexOf(controller.modeloMl)
-                        onActivated: controller.modeloMl = currentValue
+                        model: controller.modelosDisponiveis
+                        currentIndex: controller.modelosDisponiveis.indexOf(controller.modeloSelecionado)
+                        onActivated: controller.modeloSelecionado = currentValue
                     } }
                 Accordion { title: "Arduino"
-                    dotColor: controller.connARD ? verde : vermelho
+                    dotColor: controller.arduinoConectado ? verde : vermelho
                     badge: controller.arduinoStatusTexto
                     body: ColumnLayout { spacing: 8; width: parent.width
                         RowLayout { Layout.fillWidth: true; spacing: 7
                             Dropdown { Layout.fillWidth: true
-                                model: controller.portasSeriais
-                                currentIndex: controller.portasSeriais.indexOf(controller.porta)
-                                onActivated: controller.porta = currentValue }
+                                model: controller.portasSeriaisDisponiveis
+                                currentIndex: controller.portasSeriaisDisponiveis.indexOf(controller.portaArduino)
+                                onActivated: controller.portaArduino = currentValue }
                             Dropdown { Layout.preferredWidth: 92
-                                model: controller.baudRates
-                                currentIndex: controller.baudRates.indexOf(controller.baud)
-                                onActivated: controller.baud = currentValue } }
+                                model: controller.baudRatesDisponiveis
+                                currentIndex: controller.baudRatesDisponiveis.indexOf(controller.baudRateArduino)
+                                onActivated: controller.baudRateArduino = currentValue } }
                         ConnectButton { Layout.fillWidth: true
-                            conectado: controller.connARD
-                            onClicked: controller.alternar_conexao_arduino() }
+                            conectado: controller.arduinoConectado
+                            onClicked: controller.alternarConexaoArduino() }
                         Text { text: "Modo de luminosidade das fitas"; color: dim; font.pixelSize: 11 }
                         Flow { Layout.fillWidth: true; spacing: 6
                             Repeater { model: [[1,"Um a um"],[2,"Todos"],[3,"Gradiente"],[4,"A partir do centro"]]
-                                Chip { text: modelData[1]; on: controller.lumin === modelData[0]
-                                    onClicked: controller.setLumin(modelData[0]) } } } } }
+                                Chip { text: modelData[1]; on: controller.modoLuminosidade === modelData[0]
+                                    onClicked: controller.definirModoLuminosidade(modelData[0]) } } } } }
                 Accordion { title: "BITalino"
-                    dotColor: controller.connBIT ? verde : vermelho
+                    dotColor: controller.bitalinoConectado ? verde : vermelho
                     badge: controller.bitalinoStatusTexto
                     body: ColumnLayout { spacing: 8; width: parent.width
                         RowLayout { Layout.fillWidth: true; spacing: 7
                             Dropdown { Layout.fillWidth: true
-                                model: controller.canaisBitalino
-                                currentIndex: controller.canaisBitalino.indexOf(controller.canal)
-                                onActivated: controller.canal = currentValue }
+                                model: controller.canaisBitalinoDisponiveis
+                                currentIndex: controller.canaisBitalinoDisponiveis.indexOf(controller.canalBitalino)
+                                onActivated: controller.canalBitalino = currentValue }
                             Dropdown { Layout.fillWidth: true
-                                model: controller.macsBitalino
-                                currentIndex: controller.macsBitalino.indexOf(controller.mac)
-                                onActivated: controller.mac = currentValue } }
+                                model: controller.macsBitalinoDisponiveis
+                                currentIndex: controller.macsBitalinoDisponiveis.indexOf(controller.macBitalino)
+                                onActivated: controller.macBitalino = currentValue } }
                         ConnectButton { Layout.fillWidth: true
-                            conectado: controller.connBIT
-                            onClicked: controller.alternar_conexao_bitalino() }
+                            conectado: controller.bitalinoConectado
+                            onClicked: controller.alternarConexaoBitalino() }
                         Text { text: "Tipo de sensor"; color: dim; font.pixelSize: 11 }
                         Flow { Layout.fillWidth: true; spacing: 6
                             Repeater { model: ["EEG","EDA","EOG","ECG","EMG"]
                                 Chip { text: modelData; on: controller.sensor === modelData
-                                    onClicked: controller.setSensor(modelData) } } } } }
+                                    onClicked: controller.definirSensor(modelData) } } } } }
                 Accordion { title: "Modo de análise"; dotColor: "#e3a52b"; expanded: true
                     body: Segmented { options: ["Amplitude","Frequência"]
-                        current: controller.analysis; onPicked: controller.setAnalysis(opt) } }
+                        current: controller.modoAnalise; onPicked: controller.definirModoAnalise(opt) } }
                 RowLayout {
                     width: parent.width
                     Rectangle { Layout.fillWidth: true; height: 46; radius: 11; color: cardBg; border.color: stroke
                         RowLayout { anchors.fill: parent; anchors.margins: 14
                             Text { text: "Gravar aquisição"; color: "#c3d6d9"; font.pixelSize: 12 }
                             Item { Layout.fillWidth: true }
-                            Toggle { on: controller.recording; onClicked: controller.toggleGravar() } } }
+                            Toggle { on: controller.gravando; onClicked: controller.alternarGravacao() } } }
                 }
             }
             footer: Button {
@@ -578,7 +578,7 @@ ApplicationWindow {
                     Behavior on color { ColorAnimation { duration: 150 } } }
                 contentItem: Text { text: "Começar aquisição"; color: "#042026"; font.bold: true
                     font.pixelSize: 15; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                onClicked: { controller.start(); setupPanel.open = false }
+                onClicked: { controller.iniciarAquisicao(); setupPanel.open = false }
             }
         }
 
@@ -595,57 +595,57 @@ ApplicationWindow {
                 SettingsCard { title: "Fitas de LED"
                     body: ColumnLayout { width: parent.width; spacing: 13
                         SetSlider { label: "Nº de LEDs por fita"; from: 6; to: 120; step: 2
-                            value: controller.numLeds; readout: controller.numLeds
-                            onMoved: controller.numLeds = value }
+                            value: controller.quantidadeLeds; readout: controller.quantidadeLeds
+                            onMoved: controller.quantidadeLeds = value }
                         SetSlider { label: "Nº de fitas"; from: 1; to: 6; step: 1
-                            value: controller.numFitas; readout: controller.numFitas
-                            onMoved: controller.numFitas = value }
+                            value: controller.quantidadeFitas; readout: controller.quantidadeFitas
+                            onMoved: controller.quantidadeFitas = value }
                         SetSlider { label: "Brilho dos LEDs (glow)"; from: 0; to: 16; step: 1
-                            value: controller.ledGlow; readout: controller.ledGlow + " px"
-                            onMoved: controller.ledGlow = value }
+                            value: controller.brilhoLedsPx; readout: controller.brilhoLedsPx + " px"
+                            onMoved: controller.brilhoLedsPx = value }
                         SetSlider { label: "Espaço entre LEDs"; from: 0; to: 6; step: 1
-                            value: controller.ledGap; readout: controller.ledGap + " px"
-                            onMoved: controller.ledGap = value } } }
+                            value: controller.espacamentoLedsPx; readout: controller.espacamentoLedsPx + " px"
+                            onMoved: controller.espacamentoLedsPx = value } } }
                 SettingsCard { title: "Animação & feel"
                     body: ColumnLayout { width: parent.width; spacing: 13
                         SetSlider { label: "Tamanho do círculo"; from: 200; to: 380; step: 4
-                            value: controller.orbSize; readout: controller.orbSize + " px"
-                            onMoved: controller.orbSize = value }
+                            value: controller.tamanhoOrbita; readout: controller.tamanhoOrbita + " px"
+                            onMoved: controller.tamanhoOrbita = value }
                         SetSlider { label: "Intensidade do palco (glow)"; from: 0.3; to: 1.8; step: 0.05
-                            value: controller.glow; readout: controller.glow.toFixed(2) + "×"
-                            onMoved: controller.glow = value }
+                            value: controller.intensidadeGlow; readout: controller.intensidadeGlow.toFixed(2) + "×"
+                            onMoved: controller.intensidadeGlow = value }
                         SetSlider { label: "Rotação do anel"; from: 4; to: 40; step: 1
-                            value: controller.ringSpeed; readout: controller.ringSpeed + " s"
-                            onMoved: controller.ringSpeed = value }
+                            value: controller.velocidadeAnelSegundos; readout: controller.velocidadeAnelSegundos + " s"
+                            onMoved: controller.velocidadeAnelSegundos = value }
                         SetSlider { label: "Espessura do anel"; from: 6; to: 30; step: 1
-                            value: controller.ringWidth; readout: controller.ringWidth + " px"
-                            onMoved: controller.ringWidth = value }
+                            value: controller.larguraAnelPx; readout: controller.larguraAnelPx + " px"
+                            onMoved: controller.larguraAnelPx = value }
                         SetSlider { label: "Velocidade da pulsação"; from: 1.5; to: 6; step: 0.1
-                            value: controller.pulseSpeed; readout: controller.pulseSpeed.toFixed(1) + " s"
-                            onMoved: controller.pulseSpeed = value }
+                            value: controller.velocidadePulsoSegundos; readout: controller.velocidadePulsoSegundos.toFixed(1) + " s"
+                            onMoved: controller.velocidadePulsoSegundos = value }
                         SetSlider { label: "Amplitude da pulsação"; from: 0; to: 12; step: 1
-                            value: controller.pulseAmt; readout: controller.pulseAmt + " %"
-                            onMoved: controller.pulseAmt = value }
+                            value: controller.amplitudePulsoPercentual; readout: controller.amplitudePulsoPercentual + " %"
+                            onMoved: controller.amplitudePulsoPercentual = value }
                         SetSlider { label: "Espessura da linha EEG"; from: 0.5; to: 4; step: 0.1
-                            value: controller.eegWidth; readout: controller.eegWidth.toFixed(1)
-                            onMoved: controller.eegWidth = value }
+                            value: controller.larguraTracoEeg; readout: controller.larguraTracoEeg.toFixed(1)
+                            onMoved: controller.larguraTracoEeg = value }
                         SetSlider { label: "Opacidade do EEG"; from: 5; to: 60; step: 1
-                            value: controller.eegOpacity; readout: controller.eegOpacity + " %"
-                            onMoved: controller.eegOpacity = value }
+                            value: controller.opacidadeTracoEegPercentual; readout: controller.opacidadeTracoEegPercentual + " %"
+                            onMoved: controller.opacidadeTracoEegPercentual = value }
                         SetSlider { label: "Suavidade da transição de cor"; from: 0.1; to: 1.5; step: 0.05
-                            value: controller.colorFade; readout: controller.colorFade.toFixed(2) + " s"
-                            onMoved: controller.colorFade = value } } }
+                            value: controller.duracaoTransicaoCorSegundos; readout: controller.duracaoTransicaoCorSegundos.toFixed(2) + " s"
+                            onMoved: controller.duracaoTransicaoCorSegundos = value } } }
                 SettingsCard { title: "Gráfico em tempo real"
                     body: ColumnLayout { width: parent.width; spacing: 13
                         SetSlider { label: "Escala do eixo Y"; from: 20; to: 300; step: 10
-                            value: controller.yScale; readout: "±" + controller.yScale + " µV"
-                            onMoved: controller.yScale = value }
+                            value: controller.escalaEixoYMicroVolts; readout: "±" + controller.escalaEixoYMicroVolts + " µV"
+                            onMoved: controller.escalaEixoYMicroVolts = value }
                         SetSlider { label: "Janela de dados"; from: 2; to: 20; step: 1
-                            value: controller.graphWin; readout: controller.graphWin + " s"
-                            onMoved: controller.graphWin = value }
+                            value: controller.janelaGraficoSegundos; readout: controller.janelaGraficoSegundos + " s"
+                            onMoved: controller.janelaGraficoSegundos = value }
                         SetSlider { label: "Velocidade da animação"; from: 3; to: 16; step: 1
-                            value: controller.animSpeed; readout: controller.animSpeed + " s/ciclo"
-                            onMoved: controller.animSpeed = value }
+                            value: controller.velocidadeAnimacaoSegundos; readout: controller.velocidadeAnimacaoSegundos + " s/ciclo"
+                            onMoved: controller.velocidadeAnimacaoSegundos = value }
                         RowLayout { width: parent.width
                             Text { text: "Taxa de amostragem"; color: dim; font.pixelSize: 12 }
                             Item { Layout.fillWidth: true }
@@ -657,11 +657,11 @@ ApplicationWindow {
 
     // fecha painéis com ESC / alterna tela cheia com F11
     Shortcut { sequence: "Escape"; onActivated: { setupPanel.open=false; settingsPanel.open=false } }
-    Shortcut { sequence: "F11"; onActivated: controller.toggleFullscreen() }
+    Shortcut { sequence: "F11"; onActivated: controller.alternarTelaCheia() }
     onVisibilityChanged: {}
     Connections { target: controller
-        function onChanged() { if (controller.fullscreen && win.visibility !== Window.FullScreen) win.showFullScreen()
-                               else if (!controller.fullscreen && win.visibility === Window.FullScreen) win.showNormal() } }
+        function onEstadoMudou() { if (controller.telaCheia && win.visibility !== Window.FullScreen) win.showFullScreen()
+                               else if (!controller.telaCheia && win.visibility === Window.FullScreen) win.showNormal() } }
 
     // ---- diálogo de gravação: aberto quando o controller sinaliza que há dados
     //      gravados esperando um destino (ver EsquizoController._finalizar_aquisicao) ----
@@ -675,7 +675,7 @@ ApplicationWindow {
         onRejected: controller.descartarGravacao()
     }
     Connections { target: controller
-        function onChanged() { if (controller.pendenteGravar && !dialogoGravacao.visible) dialogoGravacao.open() } }
+        function onEstadoMudou() { if (controller.gravacaoPendente && !dialogoGravacao.visible) dialogoGravacao.open() } }
 
     // ---- banner de erro dispensável (falha de conexão, falha ao gravar...) ----
     Rectangle {

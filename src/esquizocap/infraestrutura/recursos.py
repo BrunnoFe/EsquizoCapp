@@ -13,7 +13,7 @@ from pathlib import Path
 
 PASTA_LOGS = Path('logs')
 
-ICONE = Path('ico.ico')
+ICONE = Path('assets') / 'ico.ico'
 """Ícone da janela. Antes apontava para `images/esquizo_ico.ico`, um asset exclusivo da
 interface Tkinter (junto com a foto de título e os círculos verde/vermelho de status —
 a GUI Qt desenha tudo isso em QML vetorial, sem imagem nenhuma). Reaproveita o ícone que

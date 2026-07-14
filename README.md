@@ -70,7 +70,7 @@ src/esquizocap/
 ├── aplicacao/        🧵  Orquestração: a thread que roda o domínio e publica
 │                         resultados para a interface, sem travar a tela.
 ├── infraestrutura/   ⚙️  Logging, configuração, persistência (Excel), assets.
-└── interface/        🖼️  Tudo que é Tkinter/ttkbootstrap.
+└── interface_qt/     🖼️  A GUI, em PySide6/QML.
 ```
 
 - **`dominio/`** é o coração: `CicloAquisicao` executa ler → pré-processar → prever →
@@ -193,5 +193,5 @@ ruff format --check .  # formatação
 
 ## 🔧 Stack técnica
 
-Python · Tkinter/ttkbootstrap · scikit-learn · pylsl (Lab Streaming Layer) · pyserial ·
+Python · PySide6/QML · scikit-learn · pylsl (Lab Streaming Layer) · pyserial ·
 scipy · pandas/openpyxl · pytest · mypy · ruff

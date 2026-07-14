@@ -12,7 +12,9 @@ extend-exclude = [".venv", "engine"]
 # imports (I) e modernização de sintaxe (UP).
 select = ["E", "F", "I", "UP"]
 
-# E501 (linha longa) fica desligado: main.py é legado com dezenas de linhas acima
-# de 200 colunas, e ligar a regra faria `ruff check` falhar sempre, inutilizando o
-# lint como portão. Reative quando o legado for quebrado em linhas menores.
+# E501 (linha longa) fica desligado: era por causa do main.py Tkinter legado, com
+# dezenas de linhas acima de 200 colunas. Esse código foi arquivado em
+# interface_tkinter_legado/, na raiz — que NÃO está no extend-exclude abaixo, então
+# ainda é varrido por este lint. Religar E501 exige excluir essa pasta primeiro (ou
+# aceitar que ela também seja corrigida).
 ignore = ["E501"]
