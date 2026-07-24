@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import EsquizoCap.Base 1.0
 
 // Botão do trilho / caixa. Aceita glyph (texto) OU icon (nome vetorial).
 Button {

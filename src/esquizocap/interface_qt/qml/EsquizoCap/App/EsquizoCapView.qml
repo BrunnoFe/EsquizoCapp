@@ -5,6 +5,11 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import QtQuick.Dialogs
 import Qt5Compat.GraphicalEffects
+import EsquizoCap.Base 1.0
+import EsquizoCap.Controles 1.0
+import EsquizoCap.Janela 1.0
+import EsquizoCap.Layout 1.0
+import EsquizoCap.Visualizacao 1.0
 
 ApplicationWindow {
     id: win

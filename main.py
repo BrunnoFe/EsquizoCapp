@@ -48,7 +48,14 @@ def main() -> int:
     controller = EsquizoController(configuracao=configuracao, modelo=modelo)
     engine.rootContext().setContextProperty('controller', controller)
 
-    qml = Path(__file__).resolve().parent / 'src' / 'esquizocap' / 'interface_qt' / 'EsquizoCapView.qml'
+    base_qml = Path(__file__).resolve().parent / 'src' / 'esquizocap' / 'interface_qt' / 'qml'
+    # O import path DEVE ser registrado antes de qualquer engine.load: a resolução de
+    # `import EsquizoCap.<Nome>` acontece no parse do .qml e não consulta caminhos
+    # adicionados depois. Aponta para a raiz que contém a árvore EsquizoCap/, não para
+    # dentro de um módulo.
+    engine.addImportPath(str(base_qml))
+
+    qml = base_qml / 'EsquizoCap' / 'App' / 'EsquizoCapView.qml'
     engine.load(QUrl.fromLocalFile(str(qml)))
     if not engine.rootObjects():
         return -1

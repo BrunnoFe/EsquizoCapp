@@ -1,0 +1,5 @@
+module EsquizoCap.Base
+IconGlyph 1.0 IconGlyph.qml
+LogoMark 1.0 LogoMark.qml
+StatusDot 1.0 StatusDot.qml
+Chip 1.0 Chip.qml

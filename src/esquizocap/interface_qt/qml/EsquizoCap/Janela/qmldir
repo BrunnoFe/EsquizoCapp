@@ -1,0 +1,4 @@
+module EsquizoCap.Janela
+import EsquizoCap.Base 1.0
+WinBtn 1.0 WinBtn.qml
+RailButton 1.0 RailButton.qml
