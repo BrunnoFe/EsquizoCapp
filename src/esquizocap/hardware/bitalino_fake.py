@@ -5,6 +5,7 @@ import math
 import random
 import time
 
+from esquizocap.hardware import protocolo_bitalino
 from esquizocap.hardware.contratos import ErroConexaoBitalino, LeitorBitalino
 
 TAXA_AMOSTRAGEM_SIMULADA: int = 1000
@@ -81,6 +82,11 @@ class BitalinoSintetico(LeitorBitalino):
         predição.
         """
         return self._amostras_geradas
+
+    def definir_canal_ativo(self, canal: int) -> None:
+        """Aceita e IGNORA o canal ativo: todos os canais sintéticos carregam o mesmo sinal,
+        já em microvolts."""
+        protocolo_bitalino.validar_canal(canal=canal)
 
     def taxa_amostragem_nominal(self) -> int:
         return TAXA_AMOSTRAGEM_SIMULADA

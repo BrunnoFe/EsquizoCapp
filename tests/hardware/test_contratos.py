@@ -15,6 +15,7 @@ import pytest
 
 from esquizocap.hardware.arduino_fake import ArduinoFake
 from esquizocap.hardware.arduino_real import ArduinoSerial
+from esquizocap.hardware.bitalino_direto import BitalinoDireto
 from esquizocap.hardware.bitalino_fake import BitalinoSintetico
 from esquizocap.hardware.bitalino_real import BitalinoLSL
 from esquizocap.hardware.contratos import (
@@ -24,7 +25,7 @@ from esquizocap.hardware.contratos import (
 )
 
 IMPLEMENTACOES_ARDUINO = [ArduinoSerial, ArduinoFake]
-IMPLEMENTACOES_BITALINO = [BitalinoLSL, BitalinoSintetico]
+IMPLEMENTACOES_BITALINO = [BitalinoLSL, BitalinoDireto, BitalinoSintetico]
 
 PARAMETROS_DE_CONEXAO_BITALINO: tuple[str, ...] = ('endereco', 'taxa_amostragem_hz', 'canais')
 """Parâmetros que toda implementação da fonte de sinal precisa aceitar ao conectar."""
@@ -115,6 +116,27 @@ class TestContratoBitalino:
                 taxa_amostragem_hz=TAXA_QUALQUER_HZ,
                 canais=CANAIS_QUAISQUER,
             )
+
+    def test_definir_canal_ativo_vale_antes_de_conectar(self, classe: type[LeitorBitalino]) -> None:
+        """O canal ativo é estado de INTERFACE: pode ser informado a qualquer momento, e
+        trocá-lo nunca reconecta. Por isso não faz parte de `conectar`.
+
+        Só o Modo Direto precisa dele — é ele que decide qual canal converter para
+        microvolts. As outras implementações aceitam e ignoram.
+        """
+        leitor = classe()
+
+        leitor.definir_canal_ativo(canal=1)
+        leitor.definir_canal_ativo(canal=6)
+
+    @pytest.mark.parametrize('canal_invalido', [0, 7, -1])
+    def test_canal_ativo_fora_da_faixa_falha_alto(
+        self, classe: type[LeitorBitalino], canal_invalido: int
+    ) -> None:
+        """Canal inexistente é erro de programação, não entrada de usuário: a interface só
+        oferece 1 a 6. Falhar alto aqui evita converter o canal errado em silêncio."""
+        with pytest.raises(ValueError, match='[Cc]anal'):
+            classe().definir_canal_ativo(canal=canal_invalido)
 
     def test_ler_sem_conectar_nao_vaza_erro_cru(self, classe: type[LeitorBitalino]) -> None:
         """Nunca um `AttributeError` de `NoneType`: o contrato tem exceção própria."""

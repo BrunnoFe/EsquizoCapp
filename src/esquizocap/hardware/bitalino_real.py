@@ -5,6 +5,7 @@ import re
 
 from pylsl import LostError, StreamInlet, resolve_byprop
 
+from esquizocap.hardware import protocolo_bitalino
 from esquizocap.hardware.contratos import ErroConexaoBitalino, ErroStreamPerdido, LeitorBitalino
 
 # O OpenSignals publica o stream LSL usando o MAC do dispositivo como `type`.
@@ -73,6 +74,16 @@ class BitalinoLSL(LeitorBitalino):
                 'Stream do BITalino não está aberto. Chame `conectar` antes de ler amostras.'
             )
         return self._stream
+
+    def definir_canal_ativo(self, canal: int) -> None:
+        """Aceita e IGNORA o canal ativo.
+
+        Neste modo, quem aplica (ou não) a função de transferência é o OpenSignals, canal a
+        canal, conforme os sensores configurados nele — um canal com sensor de EEG chega em
+        µV, um com EDA chega em µS, e um canal sem sensor chega em ADU cru. Nada disso está
+        sob controle da aplicação, então saber o canal ativo não mudaria nada aqui.
+        """
+        protocolo_bitalino.validar_canal(canal=canal)
 
     def taxa_amostragem_nominal(self) -> int:
         return int(self._stream_aberto().info().nominal_srate())

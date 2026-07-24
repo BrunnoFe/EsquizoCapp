@@ -53,11 +53,19 @@ silêncio significa que algo quebrou.
 _Avoid_: timeout, leitura vazia
 
 **Unidade do sinal**:
-A grandeza física em que o sinal chega ao domínio — hoje sempre **microvolts de EEG**. No
-Modo OpenSignals a conversão é feita pelo OpenSignals; no Modo Direto o dispositivo entrega
-ADU cru (inteiro de 0 a 1023) e a conversão é feita na borda de hardware. Em nenhum dos dois
-casos o domínio vê ADU.
+A grandeza física em que um canal chega ao domínio. **É por canal, não por amostra**: um
+canal só sai em unidade física se houver um sensor declarado nele — caso contrário sai em
+ADU. No Modo OpenSignals quem declara é o próprio OpenSignals (um canal com sensor de EEG
+sai em µV, um com EDA sai em µS, os demais saem `RAW`); no Modo Direto quem declara é a
+aplicação, que hoje trata **apenas o canal ativo**, e sempre como EEG.
 _Avoid_: escala, unidade de medida
+
+**Canal cru**:
+Canal sem sensor declarado, que chega ao domínio em ADU em vez de unidade física. Existe
+nos dois modos de aquisição. É uma armadilha silenciosa: o valor tem a mesma aparência de
+um sinal convertido, mas está noutra escala e com offset — e a predição de cor não tem como
+perceber.
+_Avoid_: canal vazio, canal desligado
 
 **ADU**:
 O valor bruto do conversor analógico-digital, antes de virar unidade física. A largura

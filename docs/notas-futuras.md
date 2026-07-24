@@ -34,6 +34,49 @@ BITalino, ou ambos. Motivação: quem opera a instalação não deve precisar de
 Nota de projeto: a fábrica hoje decide antes da GUI existir. O modo de aquisição já força essa
 decisão a virar escolha de runtime, então parte do caminho fica pronta.
 
+## Canal sem sensor chega ao domínio em ADU
+
+**Não é assunto do Modo Direto — já vale hoje, no Modo OpenSignals.** Descoberto ao sondar o
+stream real antes de implementar a #4.
+
+O OpenSignals aplica a função de transferência **apenas nos canais em que há sensor
+configurado**. No setup de referência, o stream de 7 canais vem assim:
+
+| Índice | Rótulo | Unidade |
+| --- | --- | --- |
+| 0 | `nSeq` | — |
+| 1 | `EEGBITREV0` | µV |
+| 2 | `RAW1` | — (ADU cru) |
+| 3 | `EDABITREV2` | µS |
+| 4, 5, 6 | `RAW3/4/5` | — (ADU cru) |
+
+Se o operador escolher na interface um canal sem sensor declarado, o domínio recebe **ADU**
+(inteiro de 0 a 1023, sempre positivo, centrado em ~512) onde espera microvolts (faixa
+±39,49, média zero). O modelo de predição prevê cor a partir de um número numa escala
+completamente diferente, sem erro nenhum — só cor errada na fita.
+
+Pior: escolher o canal do EDA entrega **microsiemens**, que é outra grandeza física.
+
+A interface hoje apresenta os seis canais como equivalentes e não tem como saber quais têm
+sensor. Duas saídas possíveis, nenhuma implementada: ler os rótulos que o stream LSL já
+declara nos metadados (`EEGBITREV0`, `RAW1`, ...) e refleti-los no seletor de canal; ou
+assumir a configuração e documentá-la. A primeira é factível — a sonda leu esses rótulos sem
+dificuldade.
+
+Ver também o seletor de tipo de sensor, acima: é o mesmo problema visto do outro lado.
+
+## Taxa real do OpenSignals é 100 Hz, e isso deixa a predição lenta
+
+Medido no stream de referência: `nominal_srate = 100.0`. É coerente com o sensor, que filtra
+em 0,8–48 Hz (Nyquist de 50 Hz cobre a banda inteira), mas tem efeito visível na obra:
+
+- `TAMANHO_BLOCO_LEITURA = 500` a 100 Hz são **5 segundos por bloco**.
+- A janela máxima de 2048 amostras a 100 Hz são **20 segundos por predição**.
+
+A instalação troca de cor muito mais devagar do que o código sugere à primeira leitura. Vale
+decidir se as constantes de bloco e janela deveriam ser expressas em SEGUNDOS em vez de
+amostras — hoje o significado delas muda conforme a taxa acordada, sem que ninguém perceba.
+
 ## Canais A5/A6 têm 6 bits
 
 **Não é assunto do modo direto — já vale hoje, no modo OpenSignals.** No BITalino (r)evolution,

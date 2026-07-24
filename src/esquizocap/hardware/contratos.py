@@ -135,6 +135,29 @@ class LeitorBitalino(ABC):
     inclusive se uma exceção interromper o corpo. Tanto o inlet do LSL quanto a porta
     serial são recursos do SO; abandoná-los abertos deixa a conexão pendurada até o
     processo morrer — e, no Modo Direto, trava o dispositivo para a próxima conexão.
+
+    ## Unidade do sinal: NÃO é uniforme, e não é promessa deste contrato
+
+    As amostras trazem um valor por canal, mas **a unidade varia de canal para canal**. Um
+    canal só chega em unidade física se houver um sensor declarado para ele; os demais
+    chegam em ADU (o inteiro cru do conversor A/D, sempre positivo e centrado em meia
+    escala). Quem declara depende do modo: no Modo OpenSignals é o próprio OpenSignals,
+    canal a canal, conforme configurado nele (EEG em µV, EDA em µS, o resto em ADU); no
+    Modo Direto é a aplicação, que converte APENAS o canal ativo, e sempre como EEG.
+
+    Consequência prática: alimentar a predição com um canal sem sensor entrega um número
+    numa escala completamente diferente da esperada — sem erro nenhum. Ver *canal cru* em
+    `CONTEXT.md` e a nota em `docs/notas-futuras.md`.
+
+    ## Ciclo vazio: existe em um modo, não no outro
+
+    No Modo OpenSignals a aplicação assina um stream que outro programa publica, e um
+    timeout significa "ele ainda não publicou" — um ciclo vazio, que não é falha. No Modo
+    Direto é a aplicação que dirige o dispositivo: depois do comando de início, silêncio
+    quer dizer que algo quebrou, e vira `ErroStreamPerdido`.
+
+    Por isso os métodos de leitura PODEM devolver vazio, mas não são obrigados a isso.
+    Quem chama tem de tratar as duas possibilidades.
     """
 
     @abstractmethod
@@ -165,6 +188,27 @@ class LeitorBitalino(ABC):
         """
 
     @abstractmethod
+    def definir_canal_ativo(self, canal: int) -> None:
+        """Informa qual canal analógico o sistema está consumindo, de 1 a 6.
+
+        Existe FORA de `conectar` de propósito: o canal ativo é estado de interface, e
+        trocá-lo no meio de uma sessão não pode reconectar nada. Pode ser chamado a qualquer
+        momento, inclusive antes de conectar.
+
+        Só o Modo Direto precisa desta informação — é ele que aplica a função de
+        transferência do sensor, e ela depende de qual canal converter. No Modo OpenSignals
+        quem já decidiu isso foi o próprio OpenSignals, canal a canal, conforme os sensores
+        configurados nele; a implementação sobre LSL portanto ignora a chamada.
+
+        Args:
+            canal: Canal analógico ativo, de 1 a 6.
+
+        Raises:
+            ValueError: Se o canal não existir. É erro de programação, não entrada de
+                usuário — a interface só oferece 1 a 6.
+        """
+
+    @abstractmethod
     def taxa_amostragem_nominal(self) -> int:
         """Taxa de amostragem efetiva da aquisição, em Hz.
 
@@ -189,11 +233,12 @@ class LeitorBitalino(ABC):
             Uma tupla `(canais, timestamp)`, onde `canais` tem um valor por canal do
             dispositivo — a aquisição indexa esse vetor pelo canal escolhido na GUI.
 
-            Ou `(None, None)` se o `timeout` expirar sem sinal novo. Isso NÃO é falha:
-            é um ciclo vazio, e quem chama deve simplesmente tentar de novo.
+            Ou `(None, None)` se o `timeout` expirar sem sinal novo — um CICLO VAZIO, que
+            NÃO é falha: quem chama deve simplesmente tentar de novo. Ver a nota sobre
+            ciclo vazio na classe: só o Modo OpenSignals produz isso.
 
         Raises:
-            ErroStreamPerdido: Se o stream cair durante a leitura.
+            ErroStreamPerdido: Se a aquisição deixar de ser confiável durante a leitura.
         """
 
     @abstractmethod
@@ -208,10 +253,11 @@ class LeitorBitalino(ABC):
             e cada linha tem um valor por canal.
 
             Pode vir com MENOS de `max_amostras` — inclusive vazia — se o timeout
-            expirar antes. Como no `ler_amostra`, isso é um ciclo vazio, não uma falha.
+            expirar antes. Como no `ler_amostra`, isso é um ciclo vazio, não uma falha,
+            e vale apenas para os modos que produzem ciclo vazio.
 
         Raises:
-            ErroStreamPerdido: Se o stream cair durante a leitura.
+            ErroStreamPerdido: Se a aquisição deixar de ser confiável durante a leitura.
         """
 
     @abstractmethod
