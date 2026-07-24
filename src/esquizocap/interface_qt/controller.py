@@ -5,11 +5,11 @@ rodando numa thread própria) à tela, e nada mais. A view NUNCA toca no domíni
 só lê propriedades e chama slots daqui, mantendo a separação de camadas do projeto.
 
 Este arquivo é propositalmente uma FACHADA FINA: o estado propriamente dito vive em
-dataclasses tipados (`estado_configuracao.ConfiguracaoSelecionada`,
-`estado_aparencia_visual.AparenciaVisual`, `estado_ao_vivo.LeituraAoVivo`,
-`estado_conexoes_hardware.EstadoConexoesHardware`), e a lógica que não é "colar Qt"
-vive em módulos próprios (`simulador_fita_led`, `conexao_bitalino_assincrona`,
-`gerenciador_gravacao_pendente`, `cores_visuais`, `bandas_eeg`). O que sobra aqui é:
+dataclasses tipados (`estado.configuracao.ConfiguracaoSelecionada`,
+`estado.aparencia_visual.AparenciaVisual`, `estado.ao_vivo.LeituraAoVivo`,
+`estado.conexoes_hardware.EstadoConexoesHardware`), e a lógica que não é "colar Qt"
+vive em módulos próprios (`visual.simulador_fita_led`, `ponte.conexao_bitalino_assincrona`,
+`ponte.gerenciador_gravacao_pendente`, `visual.cores`, `visual.bandas`). O que sobra aqui é:
 sinalização Qt, orquestração da aquisição, e a definição das `Property`/`Slot` que a
 QML enxerga.
 
@@ -47,9 +47,7 @@ from esquizocap.hardware.modo_aquisicao import (
     modo_do_rotulo,
 )
 from esquizocap.infraestrutura.config import Configuracao
-from esquizocap.interface_qt import bandas_eeg
-from esquizocap.interface_qt.conexao_bitalino_assincrona import ConectorBitalinoAssincrono
-from esquizocap.interface_qt.constantes_gui import (
+from esquizocap.interface_qt.constantes import (
     DURACAO_TRANSICAO_MATIZ_MS,
     INTERVALO_DRENAGEM_MS,
     LIMITE_BRILHO,
@@ -58,7 +56,6 @@ from esquizocap.interface_qt.constantes_gui import (
     LIMITE_TAMANHO_JANELA_AMOSTRAS,
     LimiteNumerico,
 )
-from esquizocap.interface_qt.cores_visuais import hsv_para_qcolor, limitar, qcolor_para_hex
 from esquizocap.interface_qt.estado import (
     CANAIS_NA_ORDEM_DO_SELETOR,
     CANAIS_VALIDOS,
@@ -73,12 +70,15 @@ from esquizocap.interface_qt.estado import (
     mensagem_de_aquisicao,
     taxas_selecionaveis,
 )
-from esquizocap.interface_qt.estado_ao_vivo import LeituraAoVivo
-from esquizocap.interface_qt.estado_aparencia_visual import LIMITES_APARENCIA_VISUAL, AparenciaVisual
-from esquizocap.interface_qt.estado_conexoes_hardware import EstadoConexoesHardware
-from esquizocap.interface_qt.estado_configuracao import ConfiguracaoSelecionada, criar_configuracao_inicial
-from esquizocap.interface_qt.gerenciador_gravacao_pendente import ErroDeGravacao, GerenciadorGravacaoPendente
-from esquizocap.interface_qt.simulador_fita_led import ParametrosQuadroLed, SimuladorFitaLed
+from esquizocap.interface_qt.estado.ao_vivo import LeituraAoVivo
+from esquizocap.interface_qt.estado.aparencia_visual import LIMITES_APARENCIA_VISUAL, AparenciaVisual
+from esquizocap.interface_qt.estado.conexoes_hardware import EstadoConexoesHardware
+from esquizocap.interface_qt.estado.configuracao import ConfiguracaoSelecionada, criar_configuracao_inicial
+from esquizocap.interface_qt.ponte.conexao_bitalino_assincrona import ConectorBitalinoAssincrono
+from esquizocap.interface_qt.ponte.gerenciador_gravacao_pendente import ErroDeGravacao, GerenciadorGravacaoPendente
+from esquizocap.interface_qt.visual import bandas as bandas_eeg
+from esquizocap.interface_qt.visual.cores import hsv_para_qcolor, limitar, qcolor_para_hex
+from esquizocap.interface_qt.visual.simulador_fita_led import ParametrosQuadroLed, SimuladorFitaLed
 
 logger = logging.getLogger(__name__)
 

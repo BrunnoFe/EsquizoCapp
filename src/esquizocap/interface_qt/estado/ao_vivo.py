@@ -34,7 +34,7 @@ class LeituraAoVivo:
     """Frequência dominante do último bloco, já formatada (modo Frequência)."""
 
     indice_banda: int = 2
-    """Índice em `bandas_eeg.BANDAS_EEG` da banda do último bloco (modo Frequência)."""
+    """Índice em `visual.bandas.BANDAS_EEG` da banda do último bloco (modo Frequência)."""
 
     amplitude_texto: str = '0.0'
     """Amplitude bruta da última amostra, já formatada (modo Amplitude)."""

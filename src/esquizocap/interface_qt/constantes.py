@@ -3,7 +3,7 @@
 Nada aqui é decisão de domínio ou de protocolo de hardware — para isso, ver
 `hardware/constantes.py`. Isto é só o que faz a GUI se comportar bem (intervalo de
 repintura, limites de sliders). Os valores INICIAIS dos controles ficam nos módulos
-`estado_configuracao.py` e `estado_aparencia_visual.py`, não aqui.
+`estado/configuracao.py` e `estado/aparencia_visual.py`, não aqui.
 """
 
 from dataclasses import dataclass

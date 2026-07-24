@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 from PySide6.QtGui import QColor
 
-from esquizocap.interface_qt.cores_visuais import hsv_para_qcolor, limitar
+from esquizocap.interface_qt.visual.cores import hsv_para_qcolor, limitar
 
 COR_LED_APAGADO = QColor(26, 32, 38)
 """Cor de todos os LEDs quando não há aquisição rodando."""

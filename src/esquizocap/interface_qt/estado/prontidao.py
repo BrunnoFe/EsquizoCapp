@@ -116,7 +116,7 @@ def taxa_minima_para_analise_espectral() -> int:
     a análise deixa de ter sentido algum, enquanto na borda ela ainda serve com ressalva —
     e é `aviso_de_taxa` quem comunica essa ressalva.
 
-    NOTA: `interface_qt/bandas_eeg.py` exibe Gamma como 30–45 Hz, enquanto
+    NOTA: `interface_qt/visual/bandas.py` exibe Gamma como 30–45 Hz, enquanto
     `categorizar_frequencia` classifica 30–50. A divergência é anterior a esta função; aqui
     vale o classificador, que é quem decide a cor. Ver `docs/notas-futuras.md`.
     """

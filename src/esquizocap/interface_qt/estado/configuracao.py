@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from esquizocap.dominio.ciclo_aquisicao import ModoAnalise
 from esquizocap.hardware import constantes
 from esquizocap.hardware.modo_aquisicao import MODO_AQUISICAO_PADRAO
-from esquizocap.interface_qt.estado import MODELOS_DISPONIVEIS
+from esquizocap.interface_qt.estado.prontidao import MODELOS_DISPONIVEIS
 
 
 @dataclass
