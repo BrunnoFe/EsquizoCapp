@@ -77,6 +77,24 @@ A instalação troca de cor muito mais devagar do que o código sugere à primei
 decidir se as constantes de bloco e janela deveriam ser expressas em SEGUNDOS em vez de
 amostras — hoje o significado delas muda conforme a taxa acordada, sem que ninguém perceba.
 
+## Três fontes discordam sobre onde Gamma termina
+
+| Onde | Faixa de Gamma |
+| --- | --- |
+| `interface_qt/bandas_eeg.py` (exibido ao operador) | 30–45 Hz |
+| `hardware/constantes.py` (docstring da taxa padrão) | até 45 Hz |
+| `dominio/pre_processamento.py:categorizar_frequencia` | 30–50 Hz |
+
+Quem decide a cor é o classificador do domínio (50 Hz), então é ele que a regra de Nyquist
+usa em `interface_qt/estado.py`. A tabela exibida diz outra coisa.
+
+Na prática pouco muda — o sensor filtra em 0,8–48 Hz por hardware, então nada acima de 48 Hz
+chega ao classificador de qualquer jeito, e as duas taxas que sobram no modo Frequência (100
+e 1000 Hz) cobrem os dois valores. Mas são três números para um fato só, e o dia em que
+alguém ajustar um deles os outros ficarão para trás em silêncio.
+
+Vale escolher uma fonte — provavelmente o classificador — e fazer as outras derivarem dela.
+
 ## Canais A5/A6 têm 6 bits
 
 **Não é assunto do modo direto — já vale hoje, no modo OpenSignals.** No BITalino (r)evolution,

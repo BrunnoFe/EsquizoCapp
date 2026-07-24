@@ -66,7 +66,9 @@ from esquizocap.interface_qt.estado import (
     EstadoApp,
     SelecaoUsuario,
     avaliar_prontidao,
+    aviso_de_taxa,
     mensagem_de_aquisicao,
+    taxas_selecionaveis,
 )
 from esquizocap.interface_qt.estado_aparencia_visual import LIMITES_APARENCIA_VISUAL, AparenciaVisual
 from esquizocap.interface_qt.estado_ao_vivo import LeituraAoVivo
@@ -463,7 +465,7 @@ class EsquizoController(QObject):
         self._conector_bitalino.conectar(
             leitor=leitor,
             endereco=self._endereco_do_modo_escolhido(),
-            taxa_amostragem_hz=constantes.TAXA_AMOSTRAGEM_PADRAO_HZ,
+            taxa_amostragem_hz=self._selecao.taxa_amostragem_hz,
             canais=list(constantes.CANAIS_BITALINO),
             ao_concluir=lambda sucesso, mensagem_erro: self.bitalinoConexaoFinalizada.emit(sucesso, mensagem_erro),
         )
@@ -562,7 +564,35 @@ class EsquizoController(QObject):
 
     @Slot(str)
     def definirModoAnalise(self, valor: str) -> None:
-        self._definir_e_notificar(self._selecao, "modo_analise", valor)
+        """Troca o modo de predição, ajustando a taxa acordada se ela deixar de servir.
+
+        Ir para Frequência com uma taxa que não alcança as bandas de EEG deixaria a seleção
+        num estado inválido. Em vez de só barrar o início da aquisição, a taxa sobe para a
+        menor válida — e o aviso na tela explica o que aconteceu. Corrigir em silêncio seria
+        pior: o operador escolheu aquela taxa de propósito.
+        """
+        if valor == self._selecao.modo_analise:
+            return
+
+        self._selecao.modo_analise = valor
+
+        validas = taxas_selecionaveis(valor)
+        if self._selecao.taxa_amostragem_hz not in validas:
+            # Sobe para a taxa PADRÃO, não para a menor válida: a menor é justamente a que
+            # deixa a banda mais alta na borda de Nyquist, e cair nela por acidente daria
+            # ao operador a pior opção ainda aceitável.
+            self._selecao.taxa_amostragem_hz = (
+                constantes.TAXA_AMOSTRAGEM_PADRAO_HZ
+                if constantes.TAXA_AMOSTRAGEM_PADRAO_HZ in validas
+                else max(validas)
+            )
+
+        self._reavaliar_prontidao()
+        self.estadoMudou.emit()
+
+    @Slot(int)
+    def definirTaxaAmostragem(self, valor: int) -> None:
+        self._definir_e_notificar(self._selecao, "taxa_amostragem_hz", valor)
 
     @Slot(str)
     def definirSensor(self, valor: str) -> None:
@@ -591,6 +621,8 @@ class EsquizoController(QObject):
             canal_bitalino=selecao.canal_bitalino,
             mac_bitalino=selecao.mac_bitalino,
             modo_aquisicao=selecao.modo_aquisicao,
+            modo_analise=selecao.modo_analise,
+            taxa_amostragem_hz=selecao.taxa_amostragem_hz,
             porta_bitalino=self._porta_derivada_do_bitalino(),
         )
         estado, mensagem = avaliar_prontidao(selecao_usuario, macs_validos=self._configuracao_app.macs_bitalino)
@@ -668,6 +700,74 @@ class EsquizoController(QObject):
     modoAquisicao = Property(
         str, *_propriedade_editavel(_obter_selecao, "modo_aquisicao", str), notify=estadoMudou
     )
+
+    def _taxas_oferecidas(self) -> list[str]:
+        """TODAS as taxas que o dispositivo aceita, sempre as mesmas.
+
+        As inválidas para o modo de predição atual aparecem desabilitadas, e não somem:
+        quem procura 10 Hz precisa ver que ela existe e está indisponível, em vez de achar
+        que a aplicação a esqueceu.
+        """
+        return [str(taxa) for taxa in constantes.TAXAS_AMOSTRAGEM_SUPORTADAS]
+
+    def _taxas_desabilitadas(self) -> list[str]:
+        """As taxas que não servem ao modo de predição atual."""
+        validas = taxas_selecionaveis(self._selecao.modo_analise)
+        return [str(taxa) for taxa in constantes.TAXAS_AMOSTRAGEM_SUPORTADAS if taxa not in validas]
+
+    def _taxa_em_vigor(self) -> int:
+        """A taxa que a aquisição está REALMENTE usando, e não a que está selecionada.
+
+        Enquanto conectado, quem manda é o dispositivo: no Modo OpenSignals a taxa foi
+        fixada lá, e no Modo Direto ela foi acordada no `conectar` — trocar o dropdown
+        depois disso não muda nada até reconectar. Devolve 0 quando ninguém sabe ainda.
+        """
+        if self._conexoes.bitalino_conectado:
+            return self._leitor_do_modo_escolhido().taxa_amostragem_nominal()
+
+        if self._modo_aquisicao_escolhido().exige_porta_de_acesso:
+            return self._selecao.taxa_amostragem_hz
+
+        return 0
+
+    def _duracao_da_janela_texto(self) -> str:
+        """Quanto tempo de sinal cabe na janela de análise, na taxa em vigor.
+
+        Existe porque a janela é medida em AMOSTRAS, e o que ela significa em segundos muda
+        com a taxa: 2048 amostras são 2 s a 1000 Hz e 20 s a 100 Hz. Sem isto, o operador
+        configura uma janela achando que a peça responde em segundos e ela responde em
+        dezenas deles — parecendo travada.
+
+        Vazio quando a taxa em vigor ainda não é conhecida (Modo OpenSignals desconectado,
+        onde quem a fixa é o OpenSignals).
+        """
+        taxa = self._taxa_em_vigor()
+
+        if taxa <= 0:
+            return ''
+
+        segundos = self._selecao.tamanho_janela_amostras / taxa
+        return f'{self._selecao.tamanho_janela_amostras} amostras ≈ {segundos:.1f} s por predição'
+
+    taxasSelecionaveis = Property("QVariantList", _taxas_oferecidas, notify=estadoMudou)
+    taxasDesabilitadas = Property("QVariantList", _taxas_desabilitadas, notify=estadoMudou)
+    taxaAmostragem = Property(str, lambda self: str(self._selecao.taxa_amostragem_hz), notify=estadoMudou)
+    taxaAmostragemVisivel = Property(
+        bool, lambda self: self._modo_aquisicao_escolhido().exige_porta_de_acesso, notify=estadoMudou
+    )
+    taxaAmostragemEditavel = Property(
+        bool, lambda self: self._seletor_de_modo_habilitado(), notify=estadoMudou
+    )
+    """A taxa é acordada no `conectar`: trocá-la com o dispositivo conectado não teria
+    efeito nenhum até reconectar, e a interface estaria mentindo ao aceitar a mudança."""
+    avisoDeTaxa = Property(
+        str,
+        lambda self: aviso_de_taxa(
+            taxa_hz=self._selecao.taxa_amostragem_hz, modo_analise=self._selecao.modo_analise
+        ),
+        notify=estadoMudou,
+    )
+    duracaoDaJanela = Property(str, _duracao_da_janela_texto, notify=estadoMudou)
 
     seletorDeModoHabilitado = Property(
         bool, lambda self: self._seletor_de_modo_habilitado(), notify=estadoMudou

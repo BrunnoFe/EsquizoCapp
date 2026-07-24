@@ -16,7 +16,13 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum, auto
 
-from esquizocap.hardware.constantes import CANAIS_BITALINO, MODOS_LUMINOSIDADE
+from esquizocap.dominio.ciclo_aquisicao import ModoAnalise
+from esquizocap.dominio.pre_processamento import FREQUENCIA_CORTE_SUPERIOR_HZ
+from esquizocap.hardware.constantes import (
+    CANAIS_BITALINO,
+    MODOS_LUMINOSIDADE,
+    TAXAS_AMOSTRAGEM_SUPORTADAS,
+)
 from esquizocap.hardware.modo_aquisicao import modo_do_rotulo
 
 TEXTO_CANAL_NAO_ESCOLHIDO: str = 'Selecione o canal ativo do Bitalino'
@@ -39,6 +45,63 @@ arquivado); movida para cá porque é a única consumidora restante.
 # O combobox entrega o canal como texto; a constante do hardware é `int`. A conversão
 # fica aqui, num lugar só, em vez de espalhar `str()` pela regra.
 CANAIS_VALIDOS: frozenset[str] = frozenset(str(canal) for canal in CANAIS_BITALINO)
+
+
+def taxa_minima_para_analise_espectral() -> int:
+    """A menor taxa acordada com que a análise espectral ainda vale alguma coisa.
+
+    Nyquist: observar um componente de F Hz exige amostrar ACIMA de 2F. A referência é
+    `FREQUENCIA_CORTE_SUPERIOR_HZ`, o teto que `categorizar_frequencia` usa para o topo de
+    Gamma — é o classificador real, e não a tabela exibida na interface.
+
+    O valor devolvido é exatamente 2F, ou seja, o LIMITE e não uma folga: nele a banda mais
+    alta cai na borda e começa a sofrer aliasing. É aceito de propósito, porque abaixo disso
+    a análise deixa de ter sentido algum, enquanto na borda ela ainda serve com ressalva —
+    e é `aviso_de_taxa` quem comunica essa ressalva.
+
+    NOTA: `interface_qt/bandas_eeg.py` exibe Gamma como 30–45 Hz, enquanto
+    `categorizar_frequencia` classifica 30–50. A divergência é anterior a esta função; aqui
+    vale o classificador, que é quem decide a cor. Ver `docs/notas-futuras.md`.
+    """
+    return int(2 * FREQUENCIA_CORTE_SUPERIOR_HZ)
+
+
+def taxas_selecionaveis(modo_analise: str) -> tuple[int, ...]:
+    """As taxas acordadas que fazem sentido para o modo de predição escolhido.
+
+    No modo **Amplitude**, todas: cada amostra vira uma cor, sem análise espectral. Taxa
+    baixa é até desejável ali — casa o ritmo de leitura com o do dispositivo, e evita que o
+    buffer acumule atraso (ver `LeitorBitalino.ler_amostra`).
+
+    No modo **Frequência**, só as que alcançam as bandas. As outras não falham: a FFT roda,
+    devolve uma frequência dominante e a classifica numa banda que o sinal não pode conter.
+    O resultado é cor errada, sem erro nenhum — por isso a interface as desabilita em vez de
+    apenas avisar.
+    """
+    if modo_analise == ModoAnalise.FREQUENCIA.value:
+        minima = taxa_minima_para_analise_espectral()
+        return tuple(taxa for taxa in TAXAS_AMOSTRAGEM_SUPORTADAS if taxa >= minima)
+
+    return TAXAS_AMOSTRAGEM_SUPORTADAS
+
+
+def aviso_de_taxa(taxa_hz: int, modo_analise: str) -> str:
+    """O que a taxa escolhida custa, quando custa algo. Vazio quando não há o que dizer.
+
+    A taxa mínima passa no gate mas fica EXATAMENTE em Nyquist: a banda mais alta cai na
+    borda, onde o aliasing começa. É diferente de estar errada, e o operador precisa poder
+    escolher sabendo.
+    """
+    if modo_analise != ModoAnalise.FREQUENCIA.value:
+        return ''
+
+    if taxa_hz == taxa_minima_para_analise_espectral():
+        return (
+            f'A {taxa_hz} Hz, a banda Gamma fica na borda de Nyquist e pode sofrer aliasing. '
+            'Use 1000 Hz para a análise de frequência completa.'
+        )
+
+    return ''
 
 
 class EstadoApp(Enum):
@@ -85,6 +148,8 @@ class SelecaoUsuario:
     canal_bitalino: str
     mac_bitalino: str
     modo_aquisicao: str
+    modo_analise: str
+    taxa_amostragem_hz: int
     porta_bitalino: str
     """Porta de acesso do BITalino, DERIVADA do MAC — não escolhida pelo operador.
 
@@ -136,6 +201,14 @@ def avaliar_prontidao(
             return EstadoApp.CONFIGURANDO, (
                 f'Arduino e Bitalino não podem usar a mesma porta ({selecao.porta_bitalino}). '
                 'Confira qual é a porta de cada um.'
+            )
+
+        # A taxa só é cobrada no Modo Direto: no Modo OpenSignals quem a fixa é o próprio
+        # OpenSignals, e a escolha desta tela nem chega ao leitor.
+        if selecao.taxa_amostragem_hz not in taxas_selecionaveis(selecao.modo_analise):
+            return EstadoApp.CONFIGURANDO, (
+                f'A taxa de {selecao.taxa_amostragem_hz} Hz não alcança as bandas de EEG do modo '
+                f'Frequência. Escolha ao menos {taxa_minima_para_analise_espectral()} Hz.'
             )
 
     return EstadoApp.PRONTO, 'Pressione "Começar aquisição"'

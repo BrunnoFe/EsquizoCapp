@@ -6,6 +6,11 @@ import QtQuick.Controls.Basic
 ComboBox {
     id: dd
 
+    // Opções que aparecem na lista mas NÃO podem ser escolhidas. Existe para o caso em
+    // que sumir com a opção esconderia a informação: quem procura 10 Hz precisa ver que
+    // ela existe e está indisponível, não achar que a aplicação a esqueceu.
+    property var desabilitados: []
+
     implicitHeight: 38
     implicitWidth: 200
 
@@ -41,22 +46,26 @@ ComboBox {
     HoverHandler { cursorShape: Qt.PointingHandCursor }
 
     delegate: ItemDelegate {
+        id: item
         width: dd.width
         implicitHeight: 34
-        highlighted: dd.highlightedIndex === index
+        enabled: dd.desabilitados.indexOf(modelData) === -1
+        opacity: enabled ? 1.0 : 0.4
+        highlighted: dd.highlightedIndex === index && enabled
         background: Rectangle {
             color: highlighted ? Qt.rgba(1, 1, 1, 0.07) : "transparent"
         }
         contentItem: Text {
             leftPadding: 11
             text: modelData
-            color: dd.currentIndex === index ? "#14b8c4" : "#b6c8cc"
+            color: !item.enabled ? "#6f9096"
+                                 : (dd.currentIndex === index ? "#14b8c4" : "#b6c8cc")
             font.pixelSize: 12
             font.bold: dd.currentIndex === index
             elide: Text.ElideRight
             verticalAlignment: Text.AlignVCenter
         }
-        HoverHandler { cursorShape: Qt.PointingHandCursor }
+        HoverHandler { cursorShape: item.enabled ? Qt.PointingHandCursor : Qt.ForbiddenCursor }
     }
 
     popup: Popup {

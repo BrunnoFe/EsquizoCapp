@@ -11,6 +11,7 @@ Tudo aqui roda com `ESQUIZOCAP_FAKE=tudo`: nenhum teste toca hardware.
 import pytest
 from PySide6.QtCore import QCoreApplication
 
+from esquizocap.dominio.ciclo_aquisicao import ModoAnalise
 from esquizocap.hardware import fabrica
 from esquizocap.hardware.modo_aquisicao import ModoAquisicao
 from esquizocap.infraestrutura.config import Configuracao
@@ -164,6 +165,121 @@ class TestPortasSeriais:
         controlador.modoAquisicao = ModoAquisicao.OPENSIGNALS.value
 
         assert 'COM6' in controlador.portasSeriaisDisponiveis
+
+
+class TestTaxaAcordada:
+    def test_o_dropdown_so_aparece_no_modo_direto(self, controlador: EsquizoController) -> None:
+        """No Modo OpenSignals quem fixa a taxa é o OpenSignals; oferecer a escolha aqui
+        seria mentir sobre o que ela faz."""
+        controlador.modoAquisicao = ModoAquisicao.OPENSIGNALS.value
+        assert controlador.taxaAmostragemVisivel is False
+
+        controlador.modoAquisicao = ModoAquisicao.DIRETO.value
+        assert controlador.taxaAmostragemVisivel is True
+
+    def test_trocar_para_frequencia_conserta_uma_taxa_que_deixou_de_servir(
+        self, controlador: EsquizoController
+    ) -> None:
+        """O operador escolhe 10 Hz em Amplitude e depois muda para Frequência. Deixar a
+        seleção inválida só barraria o botão, sem explicar; subir a taxa e avisar resolve."""
+        controlador.definirModoAnalise(ModoAnalise.AMPLITUDE.value)
+        controlador.definirTaxaAmostragem(10)
+        assert controlador.taxaAmostragem == '10'
+
+        controlador.definirModoAnalise(ModoAnalise.FREQUENCIA.value)
+
+        assert int(controlador.taxaAmostragem) >= 100
+        assert controlador.taxaAmostragem in controlador.taxasSelecionaveis
+
+    def test_o_dropdown_sempre_oferece_as_quatro_taxas_do_dispositivo(
+        self, controlador: EsquizoController
+    ) -> None:
+        """A lista não encolhe com o modo de predição — o que muda é quais estão
+        habilitadas. Ver `test_as_taxas_invalidas_aparecem_desabilitadas_e_nao_somem`."""
+        for modo in (ModoAnalise.AMPLITUDE.value, ModoAnalise.FREQUENCIA.value):
+            controlador.definirModoAnalise(modo)
+
+            assert controlador.taxasSelecionaveis == ['1', '10', '100', '1000']
+
+    def test_a_duracao_da_janela_acompanha_a_taxa(self, controlador: EsquizoController) -> None:
+        """O ponto do indicador: a mesma janela vale segundos ou dezenas deles conforme a
+        taxa, e é o que faz a instalação parecer travada."""
+        controlador.modoAquisicao = ModoAquisicao.DIRETO.value
+        controlador.definirModoAnalise(ModoAnalise.FREQUENCIA.value)
+        controlador.tamanhoJanelaAmostras = 1000
+
+        controlador.definirTaxaAmostragem(1000)
+        assert '1.0 s' in controlador.duracaoDaJanela
+
+        controlador.definirTaxaAmostragem(100)
+        assert '10.0 s' in controlador.duracaoDaJanela
+
+    def test_a_taxa_escolhida_chega_ao_leitor(self, controlador: EsquizoController) -> None:
+        """O teste que fecha o circuito: sem ele, uma regressão para a taxa padrão passaria
+        despercebida — o leitor sintético descarta o parâmetro, então nenhum outro teste da
+        suíte notaria."""
+        conexoes: list[dict[str, object]] = []
+
+        class ConectorEspiao:
+            def conectar(self, **argumentos: object) -> None:
+                conexoes.append(argumentos)
+
+        controlador._conector_bitalino = ConectorEspiao()  # type: ignore[assignment]
+        controlador.modoAquisicao = ModoAquisicao.DIRETO.value
+        controlador.definirModoAnalise(ModoAnalise.AMPLITUDE.value)
+        controlador.definirTaxaAmostragem(10)
+
+        controlador._conectar_bitalino()
+
+        assert conexoes[-1]['taxa_amostragem_hz'] == 10
+
+    def test_a_taxa_nao_e_editavel_com_o_dispositivo_conectado(
+        self, controlador: EsquizoController
+    ) -> None:
+        """A taxa é acordada no `conectar`. Aceitar a troca depois seria mentir: nada mudaria
+        até reconectar, e a duração exibida passaria a descrever uma taxa que não está em uso."""
+        controlador._leitores_por_modo = {  # type: ignore[assignment]
+            modo: LeitorEspiao(modo.name) for modo in ModoAquisicao
+        }
+        controlador._conexoes.bitalino_conectado = True
+
+        assert controlador.taxaAmostragemEditavel is False
+
+    def test_as_taxas_invalidas_aparecem_desabilitadas_e_nao_somem(
+        self, controlador: EsquizoController
+    ) -> None:
+        """Sumir com a opção esconde a informação: quem procura 10 Hz precisa ver que ela
+        existe e está indisponível, não achar que a aplicação a esqueceu."""
+        controlador.definirModoAnalise(ModoAnalise.FREQUENCIA.value)
+
+        assert controlador.taxasSelecionaveis == ['1', '10', '100', '1000']
+        assert controlador.taxasDesabilitadas == ['1', '10']
+
+    def test_em_amplitude_nenhuma_taxa_fica_desabilitada(self, controlador: EsquizoController) -> None:
+        controlador.definirModoAnalise(ModoAnalise.AMPLITUDE.value)
+
+        assert controlador.taxasDesabilitadas == []
+
+    def test_o_ajuste_automatico_escolhe_a_taxa_padrao_e_nao_a_menor_valida(
+        self, controlador: EsquizoController
+    ) -> None:
+        """A menor válida é justamente a que deixa Gamma na borda de Nyquist. Cair nela por
+        acidente daria ao operador a pior opção ainda aceitável."""
+        controlador.definirModoAnalise(ModoAnalise.AMPLITUDE.value)
+        controlador.definirTaxaAmostragem(1)
+
+        controlador.definirModoAnalise(ModoAnalise.FREQUENCIA.value)
+
+        assert controlador.taxaAmostragem == '1000'
+        assert controlador.avisoDeTaxa == '', 'a taxa padrão não deve disparar aviso'
+
+    def test_sem_taxa_conhecida_a_duracao_fica_vazia(self, controlador: EsquizoController) -> None:
+        """No Modo OpenSignals desconectado ninguém sabe a taxa — inventar um número seria
+        pior que não mostrar nada."""
+        controlador.modoAquisicao = ModoAquisicao.OPENSIGNALS.value
+        controlador._conexoes.bitalino_conectado = False
+
+        assert controlador.duracaoDaJanela == ''
 
 
 class TestEncerramento:

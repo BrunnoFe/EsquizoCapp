@@ -54,6 +54,13 @@ class ConfiguracaoSelecionada:
     mac_bitalino: str
     tela_cheia: bool
 
+    taxa_amostragem_hz: int
+    """Taxa acordada para a aquisição, em Hz.
+
+    Só tem efeito no Modo Direto: no Modo OpenSignals a taxa é fixada dentro do OpenSignals,
+    e o leitor ignora este valor.
+    """
+
     modo_aquisicao: str
     """Rótulo do modo de aquisição escolhido — ver `hardware/modo_aquisicao.py`.
 
@@ -84,5 +91,6 @@ def criar_configuracao_inicial(
         canal_bitalino=canal_bitalino_inicial,
         mac_bitalino=mac_bitalino_inicial,
         tela_cheia=False,
+        taxa_amostragem_hz=constantes.TAXA_AMOSTRAGEM_PADRAO_HZ,
         modo_aquisicao=MODO_AQUISICAO_PADRAO.value,
     )

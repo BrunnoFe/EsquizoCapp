@@ -566,6 +566,34 @@ ApplicationWindow {
                             wrapMode: Text.WordWrap
                             Layout.fillWidth: true }
 
+                        // Taxa acordada: só no Modo Direto, onde é a aplicação que manda no
+                        // dispositivo. As opções mudam com o modo de predição — abaixo do
+                        // dobro da banda mais alta a análise espectral vira artefato.
+                        Text {
+                            visible: controller.taxaAmostragemVisivel
+                            text: "Taxa de amostragem (Hz)"; color: dim; font.pixelSize: 11 }
+                        Dropdown {
+                            visible: controller.taxaAmostragemVisivel
+                            enabled: controller.taxaAmostragemEditavel
+                            opacity: enabled ? 1.0 : 0.45
+                            Layout.fillWidth: true
+                            model: controller.taxasSelecionaveis
+                            desabilitados: controller.taxasDesabilitadas
+                            currentIndex: controller.taxasSelecionaveis.indexOf(controller.taxaAmostragem)
+                            onActivated: controller.definirTaxaAmostragem(parseInt(currentValue)) }
+                        Text {
+                            visible: controller.taxaAmostragemVisivel && controller.avisoDeTaxa !== ""
+                            text: controller.avisoDeTaxa
+                            color: "#e3a52b"; font.pixelSize: 10
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true }
+                        Text {
+                            visible: controller.duracaoDaJanela !== "" && !controller.modoAmplitude
+                            text: controller.duracaoDaJanela
+                            color: dim; font.pixelSize: 10
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true }
+
                         ConnectButton { Layout.fillWidth: true
                             conectado: controller.bitalinoConectado
                             onClicked: controller.alternarConexaoBitalino() }

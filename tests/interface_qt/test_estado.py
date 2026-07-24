@@ -7,12 +7,16 @@ abrir uma janela Tk e simular cliques. Agora é entrada -> saída.
 
 import pytest
 
+from esquizocap.dominio.ciclo_aquisicao import ModoAnalise
+from esquizocap.hardware.constantes import TAXA_AMOSTRAGEM_PADRAO_HZ, TAXAS_AMOSTRAGEM_SUPORTADAS
 from esquizocap.hardware.modo_aquisicao import ModoAquisicao
 from esquizocap.interface_qt.estado import (
     EstadoApp,
     SelecaoUsuario,
     avaliar_prontidao,
+    aviso_de_taxa,
     mensagem_de_aquisicao,
+    taxas_selecionaveis,
 )
 
 MACS = ('20:17:09:18:60:29', '98:D3:B1:FD:3D:1F')
@@ -30,6 +34,8 @@ def selecao(**mudancas: object) -> SelecaoUsuario:
         'mac_bitalino': MACS[0],
         'modo_aquisicao': ModoAquisicao.OPENSIGNALS.value,
         'porta_bitalino': '',
+        'modo_analise': ModoAnalise.FREQUENCIA.value,
+        'taxa_amostragem_hz': TAXA_AMOSTRAGEM_PADRAO_HZ,
     }
     campos.update(mudancas)
     return SelecaoUsuario(**campos)  # type: ignore[arg-type]
@@ -174,6 +180,93 @@ class TestModoDeAquisicao:
 
         assert estado is EstadoApp.CONFIGURANDO
         assert 'mesma porta' in mensagem.lower()
+
+
+class TestTaxasSelecionaveis:
+    """Qual taxa acordada faz sentido depende do MODO DE PREDIÇÃO, não do gosto.
+
+    A análise espectral do modo Frequência classifica bandas de EEG até 50 Hz, e Nyquist
+    exige amostrar acima do dobro disso. Abaixo dessa taxa a FFT continua rodando e
+    devolvendo uma "banda dominante" — que é artefato puro. Nada falha, nada avisa: a fita
+    só acende na cor errada.
+    """
+
+    def test_no_modo_amplitude_todas_as_taxas_servem(self) -> None:
+        """Amplitude não faz análise espectral: cada amostra vira uma cor, e taxa baixa é
+        até desejável — casa o ritmo de leitura com o do dispositivo e evita acumular
+        atraso no buffer."""
+        assert taxas_selecionaveis(ModoAnalise.AMPLITUDE.value) == TAXAS_AMOSTRAGEM_SUPORTADAS
+
+    def test_no_modo_frequencia_so_as_que_alcancam_as_bandas(self) -> None:
+        taxas = taxas_selecionaveis(ModoAnalise.FREQUENCIA.value)
+
+        assert taxas == (100, 1000)
+        assert 10 not in taxas, '10 Hz enxerga só até 5 Hz: nem Delta inteiro'
+        assert 1 not in taxas
+
+    def test_a_taxa_padrao_serve_aos_dois_modos(self) -> None:
+        for modo in (ModoAnalise.AMPLITUDE.value, ModoAnalise.FREQUENCIA.value):
+            assert TAXA_AMOSTRAGEM_PADRAO_HZ in taxas_selecionaveis(modo)
+
+
+class TestAvisoDeTaxa:
+    def test_cem_hertz_em_frequencia_avisa_sobre_gamma(self) -> None:
+        """100 Hz dá Nyquist exatamente em 50 Hz, o topo de Gamma. Passa no gate, mas a
+        banda fica na borda e sofre aliasing — o operador precisa saber."""
+        aviso = aviso_de_taxa(taxa_hz=100, modo_analise=ModoAnalise.FREQUENCIA.value)
+
+        assert 'Gamma' in aviso
+
+    def test_mil_hertz_em_frequencia_nao_avisa_nada(self) -> None:
+        assert aviso_de_taxa(taxa_hz=1000, modo_analise=ModoAnalise.FREQUENCIA.value) == ''
+
+    def test_taxa_baixa_em_amplitude_nao_avisa_sobre_bandas(self) -> None:
+        """Não há banda nenhuma em jogo no modo Amplitude."""
+        assert 'Gamma' not in aviso_de_taxa(taxa_hz=10, modo_analise=ModoAnalise.AMPLITUDE.value)
+
+
+class TestTaxaNaProntidao:
+    def test_taxa_valida_para_o_modo_fica_pronto(self) -> None:
+        estado, _mensagem = avaliar_prontidao(
+            selecao=selecao(
+                modo_aquisicao=ModoAquisicao.DIRETO.value,
+                porta_bitalino='COM6',
+                modo_analise=ModoAnalise.FREQUENCIA.value,
+                taxa_amostragem_hz=1000,
+            ),
+            macs_validos=MACS,
+        )
+
+        assert estado is EstadoApp.PRONTO
+
+    def test_taxa_incompativel_com_o_modo_de_predicao_barra(self) -> None:
+        """Sem esta barreira, a análise espectral rodaria sobre um sinal que não contém as
+        bandas que ela diz encontrar."""
+        estado, mensagem = avaliar_prontidao(
+            selecao=selecao(
+                modo_aquisicao=ModoAquisicao.DIRETO.value,
+                porta_bitalino='COM6',
+                modo_analise=ModoAnalise.FREQUENCIA.value,
+                taxa_amostragem_hz=10,
+            ),
+            macs_validos=MACS,
+        )
+
+        assert estado is EstadoApp.CONFIGURANDO
+        assert 'taxa' in mensagem.lower()
+
+    def test_no_modo_opensignals_a_taxa_escolhida_e_irrelevante(self) -> None:
+        """Lá quem fixa a taxa é o OpenSignals; a escolha desta tela nem chega ao leitor."""
+        estado, _mensagem = avaliar_prontidao(
+            selecao=selecao(
+                modo_aquisicao=ModoAquisicao.OPENSIGNALS.value,
+                modo_analise=ModoAnalise.FREQUENCIA.value,
+                taxa_amostragem_hz=1,
+            ),
+            macs_validos=MACS,
+        )
+
+        assert estado is EstadoApp.PRONTO
 
 
 def test_a_mensagem_de_aquisicao_diz_se_esta_gravando() -> None:
