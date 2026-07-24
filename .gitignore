@@ -187,7 +187,6 @@ CLAUDE.md
 #folders
 engine/
 logs/
-tests/
 files/
 godot/
 .vscode/
