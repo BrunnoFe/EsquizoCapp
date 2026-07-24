@@ -7,7 +7,7 @@ Nada aqui influencia o sinal, o modelo ou o Arduino — são só os controles do
 
 from dataclasses import dataclass
 
-from esquizocap.interface_qt.constantes import LimiteNumerico
+from esquizocap.interface.constantes import LimiteNumerico
 
 
 @dataclass

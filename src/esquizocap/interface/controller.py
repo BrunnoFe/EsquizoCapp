@@ -56,7 +56,7 @@ from esquizocap.hardware.modo_aquisicao import (
     modo_do_rotulo,
 )
 from esquizocap.infraestrutura.config import Configuracao
-from esquizocap.interface_qt.constantes import (
+from esquizocap.interface.constantes import (
     DURACAO_TRANSICAO_MATIZ_MS,
     INTERVALO_DRENAGEM_MS,
     LIMITE_BRILHO,
@@ -65,7 +65,7 @@ from esquizocap.interface_qt.constantes import (
     LIMITE_TAMANHO_JANELA_AMOSTRAS,
     LimiteNumerico,
 )
-from esquizocap.interface_qt.estado import (
+from esquizocap.interface.estado import (
     CANAIS_NA_ORDEM_DO_SELETOR,
     CANAIS_VALIDOS,
     MODELOS_DISPONIVEIS,
@@ -79,15 +79,15 @@ from esquizocap.interface_qt.estado import (
     mensagem_de_aquisicao,
     taxas_selecionaveis,
 )
-from esquizocap.interface_qt.estado.ao_vivo import LeituraAoVivo
-from esquizocap.interface_qt.estado.aparencia_visual import LIMITES_APARENCIA_VISUAL, AparenciaVisual
-from esquizocap.interface_qt.estado.conexoes_hardware import EstadoConexoesHardware
-from esquizocap.interface_qt.estado.configuracao import ConfiguracaoSelecionada, criar_configuracao_inicial
-from esquizocap.interface_qt.ponte.conexao_bitalino_assincrona import ConectorBitalinoAssincrono
-from esquizocap.interface_qt.ponte.gerenciador_gravacao_pendente import ErroDeGravacao, GerenciadorGravacaoPendente
-from esquizocap.interface_qt.visual import bandas as bandas_eeg
-from esquizocap.interface_qt.visual.cores import hsv_para_qcolor, limitar, qcolor_para_hex
-from esquizocap.interface_qt.visual.simulador_fita_led import ParametrosQuadroLed, SimuladorFitaLed
+from esquizocap.interface.estado.ao_vivo import LeituraAoVivo
+from esquizocap.interface.estado.aparencia_visual import LIMITES_APARENCIA_VISUAL, AparenciaVisual
+from esquizocap.interface.estado.conexoes_hardware import EstadoConexoesHardware
+from esquizocap.interface.estado.configuracao import ConfiguracaoSelecionada, criar_configuracao_inicial
+from esquizocap.interface.ponte.conexao_bitalino_assincrona import ConectorBitalinoAssincrono
+from esquizocap.interface.ponte.gerenciador_gravacao_pendente import ErroDeGravacao, GerenciadorGravacaoPendente
+from esquizocap.interface.visual import bandas as bandas_eeg
+from esquizocap.interface.visual.cores import hsv_para_qcolor, limitar, qcolor_para_hex
+from esquizocap.interface.visual.simulador_fita_led import ParametrosQuadroLed, SimuladorFitaLed
 
 logger = logging.getLogger(__name__)
 

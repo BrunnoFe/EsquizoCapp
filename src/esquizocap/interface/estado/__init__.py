@@ -4,11 +4,11 @@ O subpacote reúne, num lugar só, o que a GUI precisa saber sobre "em que ponto
 estamos" e "o que o usuário escolheu": a regra de prontidão (`prontidao`) e os quatro
 retratos de estado por concern (`configuracao`, `ao_vivo`, `aparencia_visual`,
 `conexoes_hardware`). Este `__init__` reexporta a superfície pública de `prontidao` para que
-quem já importava `from ...interface_qt.estado import EstadoApp` continue funcionando sem
+quem já importava `from ...interface.estado import EstadoApp` continue funcionando sem
 saber que a regra passou a morar num submódulo.
 """
 
-from esquizocap.interface_qt.estado.prontidao import (
+from esquizocap.interface.estado.prontidao import (
     CANAIS_COM_ROTULO,
     CANAIS_NA_ORDEM_DO_SELETOR,
     CANAIS_VALIDOS,

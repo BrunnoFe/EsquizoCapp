@@ -15,8 +15,8 @@ from esquizocap.dominio.ciclo_aquisicao import ModoAnalise
 from esquizocap.hardware import fabrica
 from esquizocap.hardware.modo_aquisicao import ModoAquisicao
 from esquizocap.infraestrutura.config import Configuracao
-from esquizocap.interface_qt.controller import EsquizoController
-from esquizocap.interface_qt.estado import EstadoApp
+from esquizocap.interface.controller import EsquizoController
+from esquizocap.interface.estado import EstadoApp
 
 MAC = '20:17:09:18:60:29'
 

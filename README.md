@@ -70,7 +70,7 @@ src/esquizocap/
 ├── aplicacao/        🧵  Orquestração: a thread que roda o domínio e publica
 │                         resultados para a interface, sem travar a tela.
 ├── infraestrutura/   ⚙️  Logging, configuração, persistência (Excel), assets.
-└── interface_qt/     🖼️  A GUI, em PySide6/QML.
+└── interface/     🖼️  A GUI, em PySide6/QML.
 ```
 
 - **`dominio/`** é o coração: `CicloAquisicao` executa ler → pré-processar → prever →

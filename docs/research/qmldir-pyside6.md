@@ -5,7 +5,7 @@ documentação oficial Qt 6 (`doc.qt.io`) e a documentação oficial do PySide6
 (`pyside/pyside-setup`). Cada afirmação cita a fonte.
 
 Contexto do repo hoje: PySide6 + `QQmlApplicationEngine`; ~19 arquivos `.qml` flat em
-`src/esquizocap/interface_qt/`; raiz `EsquizoCapView.qml` carregada em `main.py:52` via
+`src/esquizocap/interface/`; raiz `EsquizoCapView.qml` carregada em `main.py:52` via
 `engine.load(QUrl.fromLocalFile(...))`. Alvo: pastas temáticas viram módulos
 `import EsquizoCap.<Nome>`.
 
@@ -106,7 +106,7 @@ in `/opt/MyApp/lib/imports/com/mycompany/Feature/` for the module."
 Ou seja, a notação pontilhada vira barras no filesystem. Layout proposto:
 
 ```
-src/esquizocap/interface_qt/
+src/esquizocap/interface/
   EsquizoCapView.qml            <- raiz, continua carregada por QUrl.fromLocalFile
   qml/                          <- ISTO é o import path registrado
     EsquizoCap/
@@ -131,7 +131,7 @@ from pathlib import Path
 from PySide6.QtCore import QUrl
 from PySide6.QtQml import QQmlApplicationEngine
 
-BASE_QML = Path(__file__).resolve().parent / "src" / "esquizocap" / "interface_qt"
+BASE_QML = Path(__file__).resolve().parent / "src" / "esquizocap" / "interface"
 
 engine = QQmlApplicationEngine()
 engine.rootContext().setContextProperty("controller", controller)
@@ -210,7 +210,7 @@ substitui apenas a integração de plataforma/janela).
 
 ## Receita recomendada para o EsquizoCap
 
-1. **Layout.** Criar `src/esquizocap/interface_qt/qml/` como raiz de import path. Sob ela,
+1. **Layout.** Criar `src/esquizocap/interface/qml/` como raiz de import path. Sob ela,
    uma árvore por módulo: `qml/EsquizoCap/<Nome>/` com um `qmldir` e os `.qml` daquela
    pasta temática (ex.: `EsquizoCap/Componentes`, `EsquizoCap/Grafico`). A raiz
    `EsquizoCapView.qml` continua carregada por `QUrl.fromLocalFile` — ela não precisa virar

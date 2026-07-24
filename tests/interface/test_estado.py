@@ -14,7 +14,7 @@ from esquizocap.hardware.constantes import (
     TAXAS_AMOSTRAGEM_SUPORTADAS,
 )
 from esquizocap.hardware.modo_aquisicao import ModoAquisicao
-from esquizocap.interface_qt.estado import (
+from esquizocap.interface.estado import (
     CANAIS_COM_ROTULO,
     CANAIS_NA_ORDEM_DO_SELETOR,
     ROTULOS_DOS_CANAIS,
