@@ -1,4 +1,4 @@
-"""Fixtures compartilhadas pela suíte."""
+"""Fixtures e helpers compartilhados pela suíte."""
 
 from typing import Any
 
@@ -6,9 +6,28 @@ import numpy
 import pytest
 
 from esquizocap.dominio.predicao import ModeloPreditor
+from esquizocap.hardware.constantes import CANAIS_BITALINO, TAXA_AMOSTRAGEM_PADRAO_HZ
+from esquizocap.hardware.contratos import LeitorBitalino
 
 TAXA_AMOSTRAGEM_HZ = 1000
 """Taxa de amostragem usada nos sinais sintéticos dos testes."""
+
+MAC_VALIDO = '20:17:09:18:60:29'
+"""Endereço que passa na validação das duas implementações da fonte de sinal."""
+
+
+def conectar_leitor(leitor: LeitorBitalino, endereco: str = MAC_VALIDO) -> None:
+    """Conecta uma fonte de sinal com os parâmetros de aquisição padrão dos testes.
+
+    Existe para que a assinatura de `conectar` apareça UMA vez na suíte: ela cresce a cada
+    ticket do Modo Direto, e sem este helper cada mudança viraria uma varredura por todos
+    os arquivos de teste que montam um leitor.
+    """
+    leitor.conectar(
+        endereco=endereco,
+        taxa_amostragem_hz=TAXA_AMOSTRAGEM_PADRAO_HZ,
+        canais=list(CANAIS_BITALINO),
+    )
 
 
 class ModeloDuble:

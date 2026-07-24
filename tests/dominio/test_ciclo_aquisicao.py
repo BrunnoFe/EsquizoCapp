@@ -1,6 +1,7 @@
 """Testes do ciclo de aquisição: ler -> pré-processar -> prever -> enviar ao Arduino."""
 
 import pytest
+from conftest import conectar_leitor
 
 from esquizocap.dominio.ciclo_aquisicao import (
     CicloAquisicao,
@@ -12,9 +13,7 @@ from esquizocap.dominio.ciclo_aquisicao import (
 from esquizocap.dominio.predicao import ModeloPreditor
 from esquizocap.hardware.arduino_fake import ArduinoFake
 from esquizocap.hardware.bitalino_fake import BitalinoSintetico
-from esquizocap.hardware.constantes import CANAIS_BITALINO, TAXA_AMOSTRAGEM_PADRAO_HZ
 
-MAC_VALIDO = '20:17:09:18:60:29'
 PORTA_VALIDA = 'COM99 - Arduino simulado (fake)'
 SATURACAO = 255
 BRILHO = 120
@@ -31,11 +30,7 @@ def montar_ciclo(
 ) -> tuple[CicloAquisicao, BitalinoSintetico, ArduinoFake]:
     leitor = BitalinoSintetico()
     arduino = ArduinoFake()
-    leitor.conectar(
-        endereco=MAC_VALIDO,
-        taxa_amostragem_hz=TAXA_AMOSTRAGEM_PADRAO_HZ,
-        canais=list(CANAIS_BITALINO),
-    )
+    conectar_leitor(leitor)
     arduino.conectar(porta=PORTA_VALIDA, baudrate=9600)
 
     ciclo = CicloAquisicao(

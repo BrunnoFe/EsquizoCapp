@@ -125,30 +125,54 @@ class ControladorLedArduino(ABC):
 class LeitorBitalino(ABC):
     """Contrato da fonte de sinal EEG.
 
-    O BITalino nunca é acessado direto: o OpenSignals publica um stream via Lab
-    Streaming Layer e é dele que se lê. Quem consome esta interface não precisa
-    saber disso — só pede amostras.
+    Existem dois **modos de aquisição**, e este contrato é a costura entre eles: o Modo
+    OpenSignals assina um stream publicado por outro programa via Lab Streaming Layer; o
+    Modo Direto fala com o dispositivo por conta própria. Quem consome esta interface não
+    precisa saber de qual dos dois veio o sinal — só pede amostras, e as recebe sempre no
+    mesmo formato e na mesma unidade.
 
     É um context manager: dentro de um `with`, o stream é encerrado ao sair do bloco,
-    inclusive se uma exceção interromper o corpo. O inlet do LSL segura um socket;
-    abandoná-lo aberto deixa a conexão pendurada até o processo morrer.
+    inclusive se uma exceção interromper o corpo. Tanto o inlet do LSL quanto a porta
+    serial são recursos do SO; abandoná-los abertos deixa a conexão pendurada até o
+    processo morrer — e, no Modo Direto, trava o dispositivo para a próxima conexão.
     """
 
     @abstractmethod
-    def conectar(self, mac_addr: str) -> None:
-        """Abre o stream de EEG do dispositivo com o MAC informado.
+    def conectar(self, endereco: str, taxa_amostragem_hz: int, canais: list[int]) -> None:
+        """Abre a fonte de sinal do dispositivo no endereço informado.
+
+        `taxa_amostragem_hz` e `canais` são parâmetros da AQUISIÇÃO, não do dispositivo:
+        sempre existiram, mas no Modo OpenSignals moram fora da aplicação, escolhidos no
+        próprio OpenSignals. Por isso a implementação sobre LSL os ignora, enquanto a do
+        Modo Direto precisa deles para iniciar a aquisição no hardware.
+
+        Ambos entram AQUI, e não no construtor ou num `configurar()` à parte, porque
+        separá-los permitiria construir um leitor em estado incompleto — e o buraco só
+        apareceria no meio de uma aquisição.
 
         Args:
-            mac_addr: Endereço MAC do BITalino, que é também o `type` do stream LSL.
+            endereco: Onde encontrar o dispositivo. O significado depende do modo: no Modo
+                OpenSignals é o MAC do dispositivo (que é também o `type` do stream LSL);
+                no Modo Direto é a porta de acesso (`COM7`).
+            taxa_amostragem_hz: Taxa acordada para a aquisição. O dispositivo só aceita
+                1, 10, 100 ou 1000 Hz.
+            canais: Canais analógicos a adquirir, de 1 a 6.
 
         Raises:
-            ErroConexaoBitalino: MAC inválido, ou stream não encontrado (OpenSignals
-                fechado ou sem o compartilhamento LSL ativo).
+            ErroConexaoBitalino: Endereço inválido, ou dispositivo não encontrado — na
+                prática, OpenSignals fechado (Modo OpenSignals) ou porta que não abre
+                (Modo Direto).
         """
 
     @abstractmethod
     def taxa_amostragem_nominal(self) -> int:
-        """Taxa de amostragem declarada pelo stream, em Hz."""
+        """Taxa de amostragem efetiva da aquisição, em Hz.
+
+        Muda de natureza conforme o modo: no Modo OpenSignals é uma PERGUNTA (a taxa que
+        o stream declara), e no Modo Direto é uma LEMBRANÇA (a taxa que a própria
+        aplicação mandou). Quem chama não precisa saber a diferença — o número serve para
+        a mesma coisa nos dois casos.
+        """
 
     @abstractmethod
     def ler_amostra(self, timeout: float) -> tuple[list[float], float] | tuple[None, None]:
@@ -202,7 +226,8 @@ class LeitorBitalino(ABC):
     def __enter__(self) -> Self:
         """Entra no bloco `with`.
 
-        NÃO conecta: o MAC é escolha de quem chama. O `with` cuida só do fechamento.
+        NÃO conecta: endereço, taxa e canais são escolha de quem chama. O `with` cuida só
+        do fechamento.
         """
         return self
 

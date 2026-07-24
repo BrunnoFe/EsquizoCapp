@@ -14,21 +14,30 @@ O caminho pelo qual o sinal do BITalino chega à aplicação. São dois: **Modo 
 fala com o dispositivo por conta própria). Escolhido pelo usuário antes de conectar.
 _Avoid_: modo de conexão, backend, driver
 
+**Endereço**:
+O termo guarda-chuva para "onde encontrar o dispositivo", sem dizer de qual modo de
+aquisição se trata. É um MAC do dispositivo no Modo OpenSignals e uma porta de acesso no
+Modo Direto. Use APENAS onde a ambiguidade é deliberada — em código genérico aos dois
+modos, como o parâmetro de conexão da fonte de sinal. Onde o modo é conhecido, use o termo
+específico.
+_Avoid_: localizador, identificador
+
 **MAC do dispositivo**:
 Identidade permanente do BITalino, gravada no hardware. É também o `type` do stream no
 Modo OpenSignals. Não muda de máquina para máquina.
-_Avoid_: endereço, ID
+_Avoid_: ID; e _endereço_ quando o modo já é conhecido
 
 **Porta de acesso**:
 A porta serial (`COM7`) pela qual o Modo Direto alcança o dispositivo. Ao contrário do MAC,
 é volátil: muda de máquina, de pareamento e até entre reinicializações. Um mesmo BITalino
 tem MAC único e porta de acesso variável.
-_Avoid_: endereço, porta (sem qualificar — a fita de LED também usa uma porta serial)
+_Avoid_: porta (sem qualificar — a fita de LED também usa uma porta serial); e _endereço_
+quando o modo já é conhecido
 
 **Taxa acordada**:
 A taxa de amostragem, em Hz, sob a qual a aquisição corre. No Modo OpenSignals é uma
-propriedade *declarada pelo stream* (a aplicação pergunta); no Modo Direto é uma *escolha
-da aplicação* (ela manda, e depois lembra). O dispositivo só aceita 1, 10, 100 ou 1000 Hz.
+propriedade _declarada pelo stream_ (a aplicação pergunta); no Modo Direto é uma _escolha
+da aplicação_ (ela manda, e depois lembra). O dispositivo só aceita 1, 10, 100 ou 1000 Hz.
 _Avoid_: taxa nominal, sample rate
 
 **Canal ativo**:

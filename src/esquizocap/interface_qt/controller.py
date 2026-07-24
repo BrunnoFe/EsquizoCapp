@@ -338,7 +338,12 @@ class EsquizoController(QObject):
         """
         self._continuacao_apos_conectar_bitalino = ao_concluir
         self._conector_bitalino.conectar(
-            mac_addr=self._selecao.mac_bitalino,
+            endereco=self._selecao.mac_bitalino,
+            # Fixos por ora: no Modo OpenSignals o leitor os ignora, porque taxa e canais já
+            # foram escolhidos dentro do OpenSignals. Viram escolha do usuário quando o Modo
+            # Direto entrar.
+            taxa_amostragem_hz=constantes.TAXA_AMOSTRAGEM_PADRAO_HZ,
+            canais=list(constantes.CANAIS_BITALINO),
             ao_concluir=lambda sucesso, mensagem_erro: self.bitalinoConexaoFinalizada.emit(sucesso, mensagem_erro),
         )
 

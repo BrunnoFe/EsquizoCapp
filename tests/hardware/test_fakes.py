@@ -6,6 +6,7 @@ confiança. Aqui garantimos que o sinal sintético tem a forma que a aquisição
 
 import numpy
 import pytest
+from conftest import conectar_leitor
 
 from esquizocap.dominio.pre_processamento import analisar_frequencia
 from esquizocap.hardware.arduino_fake import PORTA_SIMULADA, ArduinoFake
@@ -15,9 +16,6 @@ from esquizocap.hardware.bitalino_fake import (
     TAXA_AMOSTRAGEM_SIMULADA,
     BitalinoSintetico,
 )
-from esquizocap.hardware.constantes import CANAIS_BITALINO, TAXA_AMOSTRAGEM_PADRAO_HZ
-
-MAC_VALIDO = '20:17:09:18:60:29'
 
 
 class TestBitalinoSintetico:
@@ -28,11 +26,7 @@ class TestBitalinoSintetico:
     def test_a_amostra_cobre_todos_os_canais_ofertados(self) -> None:
         """A interface oferece os canais 1 a 6, então o vetor precisa chegar ao índice 6."""
         leitor = BitalinoSintetico()
-        leitor.conectar(
-            endereco=MAC_VALIDO,
-            taxa_amostragem_hz=TAXA_AMOSTRAGEM_PADRAO_HZ,
-            canais=list(CANAIS_BITALINO),
-        )
+        conectar_leitor(leitor)
 
         canais, _timestamp = leitor.ler_amostra(timeout=1)
 
@@ -41,11 +35,7 @@ class TestBitalinoSintetico:
 
     def test_o_bloco_tem_o_tamanho_pedido(self) -> None:
         leitor = BitalinoSintetico()
-        leitor.conectar(
-            endereco=MAC_VALIDO,
-            taxa_amostragem_hz=TAXA_AMOSTRAGEM_PADRAO_HZ,
-            canais=list(CANAIS_BITALINO),
-        )
+        conectar_leitor(leitor)
 
         amostras, timestamps = leitor.ler_bloco(timeout=1, max_amostras=500)
 
@@ -54,11 +44,7 @@ class TestBitalinoSintetico:
 
     def test_os_timestamps_avancam(self) -> None:
         leitor = BitalinoSintetico()
-        leitor.conectar(
-            endereco=MAC_VALIDO,
-            taxa_amostragem_hz=TAXA_AMOSTRAGEM_PADRAO_HZ,
-            canais=list(CANAIS_BITALINO),
-        )
+        conectar_leitor(leitor)
 
         _amostras, timestamps = leitor.ler_bloco(timeout=1, max_amostras=100)
 
@@ -68,11 +54,7 @@ class TestBitalinoSintetico:
     def test_o_sinal_sintetico_tem_de_fato_a_frequencia_que_promete(self) -> None:
         """Se o fake não gerar 10 Hz de verdade, os testes de frequência não valem nada."""
         leitor = BitalinoSintetico()
-        leitor.conectar(
-            endereco=MAC_VALIDO,
-            taxa_amostragem_hz=TAXA_AMOSTRAGEM_PADRAO_HZ,
-            canais=list(CANAIS_BITALINO),
-        )
+        conectar_leitor(leitor)
 
         amostras, _timestamps = leitor.ler_bloco(timeout=1, max_amostras=3000)
         sinal = numpy.array(amostras)[:, 1].astype('float32')

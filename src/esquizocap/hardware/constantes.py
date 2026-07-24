@@ -34,6 +34,19 @@ diante. Reordenar esta tupla muda o comportamento do LED sem nenhum erro do lado
 CANAIS_BITALINO: tuple[int, ...] = (1, 2, 3, 4, 5, 6)
 """Canais analógicos do BITalino. É a capacidade do dispositivo, não uma escolha."""
 
+TAXAS_AMOSTRAGEM_SUPORTADAS: tuple[int, ...] = (1, 10, 100, 1000)
+"""Taxas de amostragem que o BITalino aceita, em Hz. Fato do dispositivo, não uma escolha.
+
+O firmware não interpola: pedir qualquer outro valor é erro, não arredondamento.
+"""
+
+TAXA_AMOSTRAGEM_PADRAO_HZ: int = 1000
+"""Taxa acordada usada quando ninguém escolhe uma.
+
+É a única que serve aos dois modos de predição: as bandas de EEG vão até Gamma (45 Hz), e
+Nyquist exige amostrar acima de ~90 Hz para enxergá-la.
+"""
+
 
 def indice_do_modo(modo: str) -> int:
     """Traduz o nome do modo de luminosidade para o índice que o firmware espera.

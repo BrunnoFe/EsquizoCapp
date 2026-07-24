@@ -47,19 +47,27 @@ class BitalinoSintetico(LeitorBitalino):
         self._tempo_real: bool = tempo_real
         self._instante_inicial: float = 0.0
 
-    def conectar(self, mac_addr: str) -> None:
-        # Mantém a mesma validação do leitor real, para que um MAC inválido falhe
+    def conectar(self, endereco: str, taxa_amostragem_hz: int, canais: list[int]) -> None:
+        """Abre o stream simulado, validando o endereço como o leitor real validaria.
+
+        Como responde pelos DOIS modos de aquisição quando `ESQUIZOCAP_FAKE` está ligado,
+        aceita `taxa_amostragem_hz` e `canais` e os ignora: o sinal sintético tem taxa
+        própria (`TAXA_AMOSTRAGEM_SIMULADA`) e sempre entrega todos os canais.
+        """
+        del taxa_amostragem_hz, canais  # Ver docstring.
+
+        # Mantém a mesma validação do leitor real, para que um endereço inválido falhe
         # igual nos dois modos.
-        if len(mac_addr.split(':')) != 6:
+        if len(endereco.split(':')) != 6:
             raise ErroConexaoBitalino(
-                f'Endereço MAC inválido: "{mac_addr}". Selecione o endereço MAC do Bitalino.'
+                f'Endereço MAC inválido: "{endereco}". Selecione o endereço MAC do Bitalino.'
             )
 
         self._conectado = True
         self._amostras_geradas = 0
         self._instante_inicial = time.monotonic()
         logger.info(
-            f'[FAKE] Stream simulado aberto para o MAC "{mac_addr}" '
+            f'[FAKE] Stream simulado aberto para o MAC "{endereco}" '
             f'({FREQUENCIA_DOMINANTE_HZ} Hz, {TAXA_AMOSTRAGEM_SIMULADA} Hz de amostragem)'
             f'{", em tempo real" if self._tempo_real else ""}'
         )

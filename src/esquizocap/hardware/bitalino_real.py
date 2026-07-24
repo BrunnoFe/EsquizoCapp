@@ -15,35 +15,48 @@ logger = logging.getLogger(__name__)
 
 
 class BitalinoLSL(LeitorBitalino):
-    """Leitor real de EEG, sobre o stream LSL publicado pelo OpenSignals.
+    """Leitor de EEG do Modo OpenSignals, sobre o stream LSL que ele publica.
 
     O OpenSignals NÃO é iniciado pela aplicação: ele precisa estar aberto, com o
     compartilhamento "Lab Streaming Layer" ativo, ANTES de conectar. Se não
     estiver, a resolução do stream falha e `conectar` levanta `ErroConexaoBitalino`.
+
+    O sinal chega aqui JÁ CONVERTIDO para microvolts — a função de transferência do
+    sensor é aplicada pelo OpenSignals, não por nós.
     """
 
     def __init__(self) -> None:
         self._stream: StreamInlet | None = None
 
-    def conectar(self, mac_addr: str) -> None:
-        if PADRAO_MAC.match(mac_addr) is None:
+    def conectar(self, endereco: str, taxa_amostragem_hz: int, canais: list[int]) -> None:
+        """Resolve o stream LSL publicado pelo OpenSignals para o MAC informado.
+
+        `taxa_amostragem_hz` e `canais` são IGNORADOS de propósito: neste modo, os dois já
+        foram escolhidos pelo operador dentro do OpenSignals antes de a aplicação abrir, e
+        o stream chega com eles fixados. Aceitá-los e descartá-los é o preço de ter um
+        contrato único para os dois modos de aquisição — a alternativa seria a interface
+        saber de qual modo veio o leitor antes de mandar conectar.
+        """
+        del taxa_amostragem_hz, canais  # Fixados no OpenSignals; ver docstring.
+
+        if PADRAO_MAC.match(endereco) is None:
             raise ErroConexaoBitalino(
-                f'Endereço MAC inválido: "{mac_addr}". Selecione o endereço MAC do Bitalino.'
+                f'Endereço MAC inválido: "{endereco}". Selecione o endereço MAC do Bitalino.'
             )
 
-        logger.info(f'Resolvendo stream LSL do BITalino com MAC "{mac_addr}" ...')
-        streams = resolve_byprop(prop='type', value=mac_addr, minimum=1, timeout=TIMEOUT_RESOLUCAO_SEGUNDOS)
+        logger.info(f'Resolvendo stream LSL do BITalino com MAC "{endereco}" ...')
+        streams = resolve_byprop(prop='type', value=endereco, minimum=1, timeout=TIMEOUT_RESOLUCAO_SEGUNDOS)
 
         if not streams:
             raise ErroConexaoBitalino(
-                f'Nenhum stream LSL encontrado para o MAC "{mac_addr}". Verifique se o BITalino está '
+                f'Nenhum stream LSL encontrado para o MAC "{endereco}". Verifique se o BITalino está '
                 'conectado ao computador e se o compartilhamento "Lab Streaming Layer" está ativo no OpenSignals.'
             )
 
         # recover=False para que a queda do stream vire LostError em vez de a leitura
         # ficar travada tentando reconectar sozinha.
         self._stream = StreamInlet(streams[0], recover=False)
-        logger.info(f'Stream do BITalino "{mac_addr}" conectado')
+        logger.info(f'Stream do BITalino "{endereco}" conectado')
 
     def _stream_aberto(self) -> StreamInlet:
         """Devolve o stream, exigindo que `conectar` já tenha rodado.

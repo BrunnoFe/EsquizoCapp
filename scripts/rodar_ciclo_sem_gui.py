@@ -16,6 +16,7 @@ from esquizocap.dominio.ciclo_aquisicao import CicloAquisicao, ControlesUsuario,
 from esquizocap.dominio.predicao import carregar_modelo
 from esquizocap.hardware.arduino_fake import ArduinoFake
 from esquizocap.hardware.bitalino_fake import BitalinoSintetico
+from esquizocap.hardware.constantes import CANAIS_BITALINO, TAXA_AMOSTRAGEM_PADRAO_HZ
 
 CAMINHO_MODELO: str = 'models/BestModel_HSV_v1.pickle'
 MAC_SIMULADO: str = '20:17:09:18:60:29'
@@ -41,7 +42,11 @@ def main() -> None:
     # As bordas de hardware são context managers: o `with` garante que a porta serial e
     # o stream sejam fechados ao sair, mesmo se um ciclo levantar exceção no meio.
     with BitalinoSintetico() as leitor, ArduinoFake() as arduino:
-        leitor.conectar(mac_addr=MAC_SIMULADO)
+        leitor.conectar(
+            endereco=MAC_SIMULADO,
+            taxa_amostragem_hz=TAXA_AMOSTRAGEM_PADRAO_HZ,
+            canais=list(CANAIS_BITALINO),
+        )
         arduino.conectar(porta=PORTA_SIMULADA, baudrate=9600)
 
         ciclo = CicloAquisicao(
