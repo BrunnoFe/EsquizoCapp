@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from esquizocap.dominio.predicao import ModeloPreditor, carregar_modelo, prever_hue
+from esquizocap.dominio.predicao import ErroDeModelo, ModeloPreditor, carregar_modelo, prever_hue
 
 
 class ModeloConstante:
@@ -56,5 +56,29 @@ class TestCarregarModelo:
         assert prever_hue(modelo=modelo, metrica=1.0) == 42
 
     def test_arquivo_inexistente_falha_alto(self, tmp_path: Path) -> None:
-        with pytest.raises(FileNotFoundError):
-            carregar_modelo(caminho_modelo=tmp_path / 'nao_existe.pickle')
+        """Falha com a exceção do MÓDULO, não com a do sistema de arquivos.
+
+        `carregar_modelo` traduz de propósito: um pickle corrompido levanta uma família
+        inteira de exceções diferentes (`EOFError`, `AttributeError`, `UnpicklingError`...),
+        e arquivo ausente é só mais um caso dessa família. Quem chama trata "modelo
+        inválido" num lugar só.
+
+        Este teste esperava `FileNotFoundError` e falhava desde antes desta sessão — ele
+        contradizia o `Raises:` documentado em `carregar_modelo`.
+        """
+        caminho = tmp_path / 'nao_existe.pickle'
+
+        with pytest.raises(ErroDeModelo, match='nao_existe.pickle') as erro:
+            carregar_modelo(caminho_modelo=caminho)
+
+        # A causa original é preservada: sem ela, "não foi possível carregar" não diria se o
+        # arquivo sumiu ou se o conteúdo está corrompido.
+        assert isinstance(erro.value.__cause__, FileNotFoundError)
+
+    def test_pickle_corrompido_falha_com_o_mesmo_erro(self, tmp_path: Path) -> None:
+        """A razão de traduzir: arquivo ausente e conteúdo inválido chegam iguais a quem chama."""
+        caminho = tmp_path / 'corrompido.pickle'
+        caminho.write_bytes(b'isto nao e um pickle')
+
+        with pytest.raises(ErroDeModelo):
+            carregar_modelo(caminho_modelo=caminho)

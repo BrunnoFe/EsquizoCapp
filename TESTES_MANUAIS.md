@@ -60,6 +60,58 @@ EEG é sinal vivo: duas coletas em sequência nunca dão o mesmo número. O que 
 
 ---
 
+## 1b. PENDENTE — alinhamento dos canais 2 a 6
+
+**Por que ficou pendente:** a comparação do procedimento 1 rodou com o eletrodo no fundo de
+escala. O canal 1 confirmou que está alinhado (variava, e um canal deslocado apareceria como
+valor constante), mas **os canais 2 a 6 liam ADU 0 constante nos dois modos** — e trocar
+zeros por zeros é indistinguível.
+
+Ou seja: uma permutação entre A2..A6 no desempacotamento do frame passaria despercebida.
+
+**O que fazer quando houver oportunidade:** repetir o procedimento 1 com **sinal diferente em
+canais diferentes**. Não precisa ser EEG bonito — basta:
+
+- plugar sensores (ou apenas fios) em mais de um canal, de modo que cada um leia coisa
+  distinta; ou
+- mexer nos cabos de um canal por vez durante a coleta, gerando artefato só nele.
+
+Depois, comparar canal a canal. Cada canal deve bater consigo mesmo entre os dois modos, e
+**não** com um vizinho. Se o canal 3 do Modo Direto parecer o canal 4 do OpenSignals, há
+deslocamento no desempacotamento — ver `hardware/protocolo_bitalino.py:decodificar_frame`.
+
+Os testes automatizados cobrem isso com um frame montado à mão
+(`tests/hardware/test_protocolo_bitalino.py`), mas nenhum teste alcança a fiação real.
+
+---
+
+## 1c. PENDENTE — dropdown de taxa e seletor de canal com hardware
+
+Duas entregas foram verificadas apenas *headless* (motor QML carregado sem janela,
+propriedades conferidas) e **nunca operadas com o BITalino ligado**:
+
+**Taxa de amostragem** (Modo Direto):
+
+1. Escolha uma taxa, conecte e confirme que a duração da janela exibida corresponde ao ritmo
+   real com que a fita muda de cor.
+2. Troque o modo de predição para Frequência com 1 Hz ou 10 Hz selecionados — a taxa deve
+   subir sozinha para 1000 Hz, visivelmente.
+3. Escolha 100 Hz em Frequência e confirme que o aviso de Gamma/Nyquist aparece.
+4. Com o dispositivo conectado, confirme que o dropdown de taxa está **travado** — a taxa é
+   acordada no momento da conexão, e aceitar a troca depois seria mentira.
+
+**Seletor de canal:**
+
+1. Confirme que os rótulos mostram a resolução (`1 · 10 bits` ... `5 · 6 bits (evite para
+   EEG)`).
+2. Escolha o canal 5 ou 6 e confirme que o aviso de baixa resolução **permanece visível**
+   depois de o dropdown fechar.
+3. **O mais importante:** troque o canal DURANTE a aquisição e confirme que o sinal exibido
+   muda de acordo. Aqui morava um bug — o canal novo não chegava ao leitor, que seguia
+   convertendo o antigo. Escolher o canal 3 e ver dados do canal 1 é o sintoma.
+
+---
+
 ## 2. Modo OpenSignals continua funcionando
 
 **Quando:** sempre que o contrato da fonte de sinal (`hardware/contratos.py`) ou o
