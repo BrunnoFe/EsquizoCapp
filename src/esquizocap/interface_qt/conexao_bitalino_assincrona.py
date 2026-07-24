@@ -25,11 +25,9 @@ class ConectorBitalinoAssincrono:
     já que sinais Qt cruzam de thread automaticamente (viram `Qt.QueuedConnection`).
     """
 
-    def __init__(self, leitor: LeitorBitalino) -> None:
-        self._leitor = leitor
-
     def conectar(
         self,
+        leitor: LeitorBitalino,
         endereco: str,
         taxa_amostragem_hz: int,
         canais: list[int],
@@ -38,6 +36,9 @@ class ConectorBitalinoAssincrono:
         """Inicia a conexão numa thread auxiliar e retorna imediatamente.
 
         Args:
+            leitor: O leitor do modo de aquisição escolhido. Vem POR CHAMADA, e não no
+                construtor, porque o modo é escolha do operador feita em runtime — prendê-lo
+                na construção obrigaria a recriar este objeto a cada troca de modo.
             endereco: Onde encontrar o dispositivo — MAC do dispositivo no Modo
                 OpenSignals, porta de acesso no Modo Direto.
             taxa_amostragem_hz: Taxa acordada para a aquisição.
@@ -48,7 +49,7 @@ class ConectorBitalinoAssincrono:
 
         def alvo_da_thread() -> None:
             try:
-                self._leitor.conectar(endereco=endereco, taxa_amostragem_hz=taxa_amostragem_hz, canais=canais)
+                leitor.conectar(endereco=endereco, taxa_amostragem_hz=taxa_amostragem_hz, canais=canais)
             except ErroConexaoBitalino as erro:
                 ao_concluir(False, str(erro))
             else:

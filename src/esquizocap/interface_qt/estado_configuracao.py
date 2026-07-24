@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 from esquizocap.dominio.ciclo_aquisicao import ModoAnalise
 from esquizocap.hardware import constantes
+from esquizocap.hardware.modo_aquisicao import MODO_AQUISICAO_PADRAO
 from esquizocap.interface_qt.estado import MODELOS_DISPONIVEIS
 
 
@@ -53,6 +54,14 @@ class ConfiguracaoSelecionada:
     mac_bitalino: str
     tela_cheia: bool
 
+    modo_aquisicao: str
+    """Rótulo do modo de aquisição escolhido — ver `hardware/modo_aquisicao.py`.
+
+    A porta de acesso NÃO mora aqui: ela é derivada do MAC a cada consulta, e guardá-la
+    criaria uma segunda fonte de verdade que envelhece quando o operador troca de
+    dispositivo ou repareia o BITalino.
+    """
+
 
 def criar_configuracao_inicial(
     porta_arduino_inicial: str, canal_bitalino_inicial: str, mac_bitalino_inicial: str
@@ -75,4 +84,5 @@ def criar_configuracao_inicial(
         canal_bitalino=canal_bitalino_inicial,
         mac_bitalino=mac_bitalino_inicial,
         tela_cheia=False,
+        modo_aquisicao=MODO_AQUISICAO_PADRAO.value,
     )

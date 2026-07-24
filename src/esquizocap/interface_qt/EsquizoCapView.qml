@@ -548,6 +548,24 @@ ApplicationWindow {
                                 model: controller.macsBitalinoDisponiveis
                                 currentIndex: controller.macsBitalinoDisponiveis.indexOf(controller.macBitalino)
                                 onActivated: controller.macBitalino = currentValue } }
+
+                        // Modo de aquisição: por onde o sinal chega. Trava enquanto conectado —
+                        // o dispositivo aceita um cliente por vez, e trocar com o stream aberto
+                        // deixaria o outro leitor segurando a porta.
+                        Text { text: "Modo de aquisição"; color: dim; font.pixelSize: 11 }
+                        Dropdown { Layout.fillWidth: true
+                            enabled: controller.seletorDeModoHabilitado
+                            opacity: enabled ? 1.0 : 0.45
+                            model: controller.modosAquisicaoDisponiveis
+                            currentIndex: controller.modosAquisicaoDisponiveis.indexOf(controller.modoAquisicao)
+                            onActivated: controller.modoAquisicao = currentValue }
+                        Text {
+                            visible: controller.avisoDoModoAquisicao !== ""
+                            text: controller.avisoDoModoAquisicao
+                            color: dim; font.pixelSize: 10
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true }
+
                         ConnectButton { Layout.fillWidth: true
                             conectado: controller.bitalinoConectado
                             onClicked: controller.alternarConexaoBitalino() }

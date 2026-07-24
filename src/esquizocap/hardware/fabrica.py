@@ -14,9 +14,11 @@ import os
 
 from esquizocap.hardware.arduino_fake import ArduinoFake
 from esquizocap.hardware.arduino_real import ArduinoSerial
+from esquizocap.hardware.bitalino_direto import BitalinoDireto
 from esquizocap.hardware.bitalino_fake import BitalinoSintetico
 from esquizocap.hardware.bitalino_real import BitalinoLSL
 from esquizocap.hardware.contratos import ControladorLedArduino, LeitorBitalino
+from esquizocap.hardware.modo_aquisicao import ModoAquisicao
 
 NOME_VARIAVEL_FAKE: str = 'ESQUIZOCAP_FAKE'
 VALORES_PARA_TODOS: frozenset[str] = frozenset({'1', 'true', 'tudo', 'all'})
@@ -49,7 +51,7 @@ def criar_arduino() -> ControladorLedArduino:
 
 
 def criar_bitalino() -> LeitorBitalino:
-    """Cria o leitor de EEG, real ou simulado conforme `ESQUIZOCAP_FAKE`.
+    """Cria o leitor de EEG do Modo OpenSignals, real ou simulado.
 
     O fake sai daqui em TEMPO REAL: quem o consome é a thread de aquisição, que lê em
     laço contínuo. Um gerador que entrega amostras instantaneamente faria esse laço
@@ -59,3 +61,24 @@ def criar_bitalino() -> LeitorBitalino:
     if usar_fake('bitalino'):
         return BitalinoSintetico(tempo_real=True)
     return BitalinoLSL()
+
+
+def criar_leitores_por_modo() -> dict[ModoAquisicao, LeitorBitalino]:
+    """Cria um leitor para CADA modo de aquisição, de uma vez.
+
+    Os dois nascem no arranque porque os construtores são inertes — nada toca o hardware
+    até `conectar`. Mantê-los vivos não custa recurso nenhum e evita que a referência ao
+    leitor vire um opcional que precisa de guarda em todo uso.
+
+    Com o BITalino simulado, o MESMO leitor sintético responde pelos dois modos: a escolha
+    do operador deixa de ter efeito, e a interface precisa dizer isso em vez de fingir que
+    a opção funciona.
+    """
+    if usar_fake('bitalino'):
+        sintetico = BitalinoSintetico(tempo_real=True)
+        return {modo: sintetico for modo in ModoAquisicao}
+
+    return {
+        ModoAquisicao.OPENSIGNALS: BitalinoLSL(),
+        ModoAquisicao.DIRETO: BitalinoDireto(),
+    }

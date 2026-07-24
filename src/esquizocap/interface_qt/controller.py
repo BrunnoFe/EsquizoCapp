@@ -38,8 +38,14 @@ from esquizocap import hardware
 from esquizocap.aplicacao import EventoErro, EventoParado, EventoResultado, ServicoAquisicao
 from esquizocap.dominio.ciclo_aquisicao import CicloAquisicao, ControlesUsuario, ModoAnalise, ResultadoCiclo
 from esquizocap.dominio.predicao import ModeloPreditor
-from esquizocap.hardware import constantes
-from esquizocap.hardware.contratos import ErroConexaoArduino
+from esquizocap.hardware import constantes, portas_bluetooth
+from esquizocap.hardware.contratos import ErroConexaoArduino, LeitorBitalino
+from esquizocap.hardware.modo_aquisicao import (
+    MODO_AQUISICAO_PADRAO,
+    MODOS_AQUISICAO,
+    ModoAquisicao,
+    modo_do_rotulo,
+)
 from esquizocap.infraestrutura.config import Configuracao
 from esquizocap.interface_qt import bandas_eeg
 from esquizocap.interface_qt.conexao_bitalino_assincrona import ConectorBitalinoAssincrono
@@ -54,7 +60,9 @@ from esquizocap.interface_qt.constantes_gui import (
 )
 from esquizocap.interface_qt.cores_visuais import hsv_para_qcolor, limitar, qcolor_para_hex
 from esquizocap.interface_qt.estado import (
+    CANAIS_VALIDOS,
     MODELOS_DISPONIVEIS,
+    TEXTO_PORTA_NAO_ENCONTRADA,
     EstadoApp,
     SelecaoUsuario,
     avaliar_prontidao,
@@ -140,8 +148,10 @@ class EsquizoController(QObject):
         self._configuracao_app = configuracao
         self._modelo = modelo
         self._arduino = hardware.criar_arduino()
-        self._bitalino = hardware.criar_bitalino()
-        self._conector_bitalino = ConectorBitalinoAssincrono(self._bitalino)
+        # Os dois modos nascem juntos: os construtores são inertes, nada toca o hardware
+        # até `conectar`. Assim a troca de modo é só escolher outra chave deste mapa.
+        self._leitores_por_modo = hardware.criar_leitores_por_modo()
+        self._conector_bitalino = ConectorBitalinoAssincrono()
         self._simulador_leds = SimuladorFitaLed()
         self._gravacao_pendente = GerenciadorGravacaoPendente()
 
@@ -151,6 +161,17 @@ class EsquizoController(QObject):
         self._mensagem_status: str = ""
         self._erro_atual: str = ""
         self._continuacao_apos_conectar_bitalino: Callable[[], None] | None = None
+        self._conectando_bitalino: bool = False
+        """Ligado enquanto a thread de conexão roda.
+
+        Sem isto, o seletor de modo continuaria liberado durante a tentativa — e trocar de
+        modo nesse intervalo faria a aquisição subir com um leitor que nunca conectou.
+        """
+
+        self._porta_bitalino_em_cache: tuple[str, str] | None = None
+        """`(mac, porta)` da última derivação, para não varrer as portas do sistema a cada
+        ajuste de slider: a prontidão é reavaliada a cada mudança de qualquer campo, e a
+        varredura do SetupAPI custa dezenas de milissegundos na GUI thread."""
 
         # listas reais do setup — calculadas uma vez aqui; portas plugadas depois da
         # abertura da app não aparecem sem reiniciar (limitação aceita, não é regressão:
@@ -158,6 +179,7 @@ class EsquizoController(QObject):
         self._portas_seriais_disponiveis: list[str] = self._arduino.listar_portas()
         self._canais_bitalino_disponiveis: list[str] = [str(canal) for canal in constantes.CANAIS_BITALINO]
         self._macs_bitalino_disponiveis: list[str] = list(configuracao.macs_bitalino)
+        self._modos_aquisicao_disponiveis: list[str] = list(MODOS_AQUISICAO)
         self._baud_rates_disponiveis: list[str] = [str(baud) for baud in constantes.BAUDRATES_SUPORTADOS]
 
         self._selecao = criar_configuracao_inicial(
@@ -236,7 +258,7 @@ class EsquizoController(QObject):
         """Monta o núcleo e entrega a aquisição à thread. Só chega aqui com o BITalino conectado."""
         selecao = self._selecao
         self._ciclo = CicloAquisicao(
-            leitor=self._bitalino,
+            leitor=self._leitor_do_modo_escolhido(),
             arduino=self._arduino,
             modelo=self._modelo,
             modo_analise=ModoAnalise(selecao.modo_analise),
@@ -323,10 +345,103 @@ class EsquizoController(QObject):
         permite testar a conexão antes, usando os mesmos métodos reais do contrato.
         """
         if self._conexoes.bitalino_conectado:
-            self._bitalino.encerrar_stream()
+            self._encerrar_todos_os_leitores()
             self._definir_e_notificar(self._conexoes, "bitalino_conectado", False)
             return
         self._conectar_bitalino()
+
+    def _bitalino_esta_simulado(self) -> bool:
+        """Com o BITalino simulado, o MESMO leitor responde pelos dois modos."""
+        return len(set(self._leitores_por_modo.values())) == 1
+
+    def _seletor_de_modo_habilitado(self) -> bool:
+        """O modo só pode mudar com o dispositivo desconectado.
+
+        Trocar de modo com um stream aberto deixaria o outro leitor segurando socket ou
+        porta serial — e, no Modo Direto, isso trava o dispositivo para a próxima conexão.
+        Desconectar primeiro elimina a classe inteira de bugs.
+        """
+        if self._bitalino_esta_simulado():
+            return False
+        if self._estado_app in (EstadoApp.ADQUIRINDO, EstadoApp.PARANDO):
+            return False
+        if self._conectando_bitalino:
+            return False
+        return not self._conexoes.bitalino_conectado
+
+    def _aviso_do_modo_aquisicao(self) -> str:
+        """O que o operador precisa saber sobre o modo escolhido, agora.
+
+        Vazio quando não há nada a dizer — a interface esconde o aviso nesse caso.
+        """
+        if self._bitalino_esta_simulado():
+            return (
+                'BITalino simulado (ESQUIZOCAP_FAKE): o sinal é sintético e a escolha de modo '
+                'não tem efeito.'
+            )
+
+        if self._conexoes.bitalino_conectado:
+            return 'Desconecte o Bitalino para trocar de modo.'
+
+        if not self._modo_aquisicao_escolhido().exige_porta_de_acesso:
+            return 'Requer o OpenSignals aberto, com "Lab Streaming Layer" ativo e gravação iniciada.'
+
+        porta = self._porta_derivada_do_bitalino()
+        if not porta:
+            return f'{TEXTO_PORTA_NAO_ENCONTRADA}.'
+
+        return f'Porta {porta}. Requer o OpenSignals FECHADO — o dispositivo aceita um cliente por vez.'
+
+    def _encerrar_todos_os_leitores(self) -> None:
+        """Fecha o leitor de TODOS os modos, não só o do modo escolhido agora.
+
+        Encerrar é idempotente por contrato, então fechar um leitor que nunca conectou é
+        inofensivo — e cobre o caso de o modo ter mudado entre conectar e desconectar, que
+        deixaria uma porta serial presa até o processo morrer.
+        """
+        for leitor in set(self._leitores_por_modo.values()):
+            leitor.encerrar_stream()
+
+    def _modo_aquisicao_escolhido(self) -> ModoAquisicao:
+        """O modo escolhido na tela. Cai no padrão se o rótulo não for reconhecido."""
+        try:
+            return modo_do_rotulo(self._selecao.modo_aquisicao)
+        except ValueError:
+            return MODO_AQUISICAO_PADRAO
+
+    def _leitor_do_modo_escolhido(self) -> LeitorBitalino:
+        return self._leitores_por_modo[self._modo_aquisicao_escolhido()]
+
+    def _porta_derivada_do_bitalino(self) -> str:
+        """Descobre a porta de acesso do BITalino a partir do MAC escolhido.
+
+        Derivada a cada consulta, e não guardada: a porta muda se o operador trocar de
+        dispositivo ou repareá-lo, e um valor guardado envelheceria em silêncio.
+
+        Devolve string vazia quando não há porta — dispositivo não pareado, desligado, ou
+        sistema fora do Windows.
+        """
+        if not self._modo_aquisicao_escolhido().exige_porta_de_acesso:
+            return ''
+
+        mac = self._selecao.mac_bitalino
+        if self._porta_bitalino_em_cache is not None and self._porta_bitalino_em_cache[0] == mac:
+            return self._porta_bitalino_em_cache[1]
+
+        porta = (
+            portas_bluetooth.derivar_porta(
+                mac=mac, portas_do_sistema=portas_bluetooth.listar_portas_do_sistema()
+            )
+            or ''
+        )
+        self._porta_bitalino_em_cache = (mac, porta)
+        return porta
+
+    def _endereco_do_modo_escolhido(self) -> str:
+        """Onde encontrar o dispositivo, conforme o modo: MAC no OpenSignals, porta no Direto."""
+        if self._modo_aquisicao_escolhido().exige_porta_de_acesso:
+            return self._porta_derivada_do_bitalino()
+        return self._selecao.mac_bitalino
 
     def _conectar_bitalino(self, ao_concluir: Callable[[], None] | None = None) -> None:
         """Pede ao `ConectorBitalinoAssincrono` para conectar numa thread auxiliar.
@@ -337,11 +452,17 @@ class EsquizoController(QObject):
                 conexão terminar.
         """
         self._continuacao_apos_conectar_bitalino = ao_concluir
+        self._conectando_bitalino = True
+        leitor = self._leitor_do_modo_escolhido()
+
+        # O canal ativo é informado ANTES de conectar porque, no Modo Direto, é ele que
+        # decide qual canal vira microvolts. Trocá-lo depois não reconecta — ver
+        # `LeitorBitalino.definir_canal_ativo`.
+        leitor.definir_canal_ativo(canal=int(self._selecao.canal_bitalino))
+
         self._conector_bitalino.conectar(
-            endereco=self._selecao.mac_bitalino,
-            # Fixos por ora: no Modo OpenSignals o leitor os ignora, porque taxa e canais já
-            # foram escolhidos dentro do OpenSignals. Viram escolha do usuário quando o Modo
-            # Direto entrar.
+            leitor=leitor,
+            endereco=self._endereco_do_modo_escolhido(),
             taxa_amostragem_hz=constantes.TAXA_AMOSTRAGEM_PADRAO_HZ,
             canais=list(constantes.CANAIS_BITALINO),
             ao_concluir=lambda sucesso, mensagem_erro: self.bitalinoConexaoFinalizada.emit(sucesso, mensagem_erro),
@@ -351,6 +472,7 @@ class EsquizoController(QObject):
         """Slot conectado ao próprio sinal `bitalinoConexaoFinalizada`; roda na GUI
         thread mesmo quando emitido pela thread auxiliar (Qt enfileira a chamada
         automaticamente)."""
+        self._conectando_bitalino = False
         continuacao = self._continuacao_apos_conectar_bitalino
         self._continuacao_apos_conectar_bitalino = None
         if not sucesso:
@@ -403,7 +525,7 @@ class EsquizoController(QObject):
         if self._servico is not None:
             self._servico.parar()
             self._servico = None
-        self._bitalino.encerrar_stream()
+        self._encerrar_todos_os_leitores()
         self._arduino.desconectar()
         self._conexoes.arduino_conectado = False
         self._conexoes.bitalino_conectado = False
@@ -468,6 +590,8 @@ class EsquizoController(QObject):
             arduino_conectado=self._conexoes.arduino_conectado,
             canal_bitalino=selecao.canal_bitalino,
             mac_bitalino=selecao.mac_bitalino,
+            modo_aquisicao=selecao.modo_aquisicao,
+            porta_bitalino=self._porta_derivada_do_bitalino(),
         )
         estado, mensagem = avaliar_prontidao(selecao_usuario, macs_validos=self._configuracao_app.macs_bitalino)
         self._estado_app = estado
@@ -507,19 +631,84 @@ class EsquizoController(QObject):
     )
 
     modelosDisponiveis = Property("QVariantList", lambda self: list(MODELOS_DISPONIVEIS), constant=True)
-    portasSeriaisDisponiveis = Property("QVariantList", lambda self: self._portas_seriais_disponiveis, constant=True)
+    def _portas_oferecidas_ao_arduino(self) -> list[str]:
+        """As portas do Arduino, MENOS a que o BITalino está usando.
+
+        Oferecer a porta do BITalino aqui deixaria as duas conexões disputando o mesmo
+        recurso — e o operador não teria como descobrir por quê, já que todas as portas
+        Bluetooth carregam a mesma descrição.
+
+        Só filtra no Modo Direto: no Modo OpenSignals o BITalino não ocupa porta serial
+        nenhuma, e esconder uma opção ali seria mentira.
+        """
+        porta_do_bitalino = self._porta_derivada_do_bitalino()
+
+        if not porta_do_bitalino:
+            return self._portas_seriais_disponiveis
+
+        # As portas do Arduino vêm como "COM5 - descrição"; comparar só até o " - ".
+        return [
+            porta
+            for porta in self._portas_seriais_disponiveis
+            if porta.split(' - ')[0].strip().upper() != porta_do_bitalino.upper()
+        ]
+
+    portasSeriaisDisponiveis = Property(
+        "QVariantList", _portas_oferecidas_ao_arduino, notify=estadoMudou
+    )
     baudRatesDisponiveis = Property("QVariantList", lambda self: self._baud_rates_disponiveis, constant=True)
     canaisBitalinoDisponiveis = Property(
         "QVariantList", lambda self: self._canais_bitalino_disponiveis, constant=True
     )
     macsBitalinoDisponiveis = Property("QVariantList", lambda self: self._macs_bitalino_disponiveis, constant=True)
+    modosAquisicaoDisponiveis = Property(
+        "QVariantList", lambda self: self._modos_aquisicao_disponiveis, constant=True
+    )
+
+    modoAquisicao = Property(
+        str, *_propriedade_editavel(_obter_selecao, "modo_aquisicao", str), notify=estadoMudou
+    )
+
+    seletorDeModoHabilitado = Property(
+        bool, lambda self: self._seletor_de_modo_habilitado(), notify=estadoMudou
+    )
+    avisoDoModoAquisicao = Property(str, lambda self: self._aviso_do_modo_aquisicao(), notify=estadoMudou)
 
     modeloSelecionado = Property(
         str, *_propriedade_editavel(_obter_selecao, "modelo_selecionado", str), notify=estadoMudou
     )
     portaArduino = Property(str, *_propriedade_editavel(_obter_selecao, "porta_arduino", str), notify=estadoMudou)
     baudRateArduino = Property(str, *_propriedade_editavel(_obter_selecao, "baud_rate", str), notify=estadoMudou)
-    canalBitalino = Property(str, *_propriedade_editavel(_obter_selecao, "canal_bitalino", str), notify=estadoMudou)
+    def _obter_canal_bitalino(self) -> str:
+        return self._selecao.canal_bitalino
+
+    def _definir_canal_bitalino(self, valor: str) -> None:
+        """Guarda o canal ativo E o informa aos leitores.
+
+        O setter genérico não serve aqui: ele só escreveria em `_selecao`. No Modo Direto é
+        o leitor quem aplica a função de transferência, e ela depende de QUAL canal
+        converter — sem esta propagação, trocar de canal no meio da sessão faria o leitor
+        seguir convertendo o canal antigo e entregar o novo em ADU. Números plausíveis, cor
+        errada, nenhum erro.
+
+        Avisa TODOS os leitores, e não só o do modo escolhido: assim o modo pode ser trocado
+        depois sem que o canal ativo fique para trás.
+        """
+        if valor == self._selecao.canal_bitalino:
+            return
+
+        self._selecao.canal_bitalino = valor
+
+        # O combobox oferece só 1 a 6, mas o QML pode mandar o texto de "nada escolhido".
+        # Nesse caso não há canal a informar — a prontidão já barra o início da aquisição.
+        if valor in CANAIS_VALIDOS:
+            for leitor in set(self._leitores_por_modo.values()):
+                leitor.definir_canal_ativo(canal=int(valor))
+
+        self._reavaliar_prontidao()
+        self.estadoMudou.emit()
+
+    canalBitalino = Property(str, _obter_canal_bitalino, _definir_canal_bitalino, notify=estadoMudou)
     macBitalino = Property(str, *_propriedade_editavel(_obter_selecao, "mac_bitalino", str), notify=estadoMudou)
 
     def _em_modo_amplitude(self) -> bool:

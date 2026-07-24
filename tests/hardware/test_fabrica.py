@@ -9,8 +9,10 @@ import pytest
 from esquizocap.hardware import fabrica
 from esquizocap.hardware.arduino_fake import ArduinoFake
 from esquizocap.hardware.arduino_real import ArduinoSerial
+from esquizocap.hardware.bitalino_direto import BitalinoDireto
 from esquizocap.hardware.bitalino_fake import BitalinoSintetico
 from esquizocap.hardware.bitalino_real import BitalinoLSL
+from esquizocap.hardware.modo_aquisicao import ModoAquisicao
 
 
 class TestPadraoEHardwareReal:
@@ -27,6 +29,43 @@ class TestPadraoEHardwareReal:
 
         assert fabrica.componentes_simulados() == set()
         assert isinstance(fabrica.criar_arduino(), ArduinoSerial)
+
+
+class TestLeitoresPorModo:
+    """Os dois modos de aquisição nascem juntos no arranque."""
+
+    def test_cada_modo_ganha_a_implementacao_certa(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv(fabrica.NOME_VARIAVEL_FAKE, raising=False)
+
+        leitores = fabrica.criar_leitores_por_modo()
+
+        assert isinstance(leitores[ModoAquisicao.OPENSIGNALS], BitalinoLSL)
+        assert isinstance(leitores[ModoAquisicao.DIRETO], BitalinoDireto)
+
+    def test_todos_os_modos_tem_leitor(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Um modo sem leitor viraria KeyError no clique de conectar."""
+        monkeypatch.delenv(fabrica.NOME_VARIAVEL_FAKE, raising=False)
+
+        assert set(fabrica.criar_leitores_por_modo()) == set(ModoAquisicao)
+
+    def test_construir_os_dois_nao_toca_o_hardware(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A premissa que permite criar ambos no arranque: os construtores são inertes.
+
+        Se um deles abrisse porta ou resolvesse stream, a aplicação não subiria sem o
+        hardware presente — e o modo NÃO escolhido seguraria um recurso à toa.
+        """
+        monkeypatch.delenv(fabrica.NOME_VARIAVEL_FAKE, raising=False)
+
+        fabrica.criar_leitores_por_modo()  # não levanta, mesmo sem BITalino nenhum plugado
+
+    def test_com_fake_o_mesmo_leitor_responde_pelos_dois(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A escolha de modo perde o efeito, e a interface tem que avisar em vez de fingir."""
+        monkeypatch.setenv(fabrica.NOME_VARIAVEL_FAKE, 'bitalino')
+
+        leitores = fabrica.criar_leitores_por_modo()
+
+        assert isinstance(leitores[ModoAquisicao.DIRETO], BitalinoSintetico)
+        assert leitores[ModoAquisicao.DIRETO] is leitores[ModoAquisicao.OPENSIGNALS]
 
 
 class TestSelecaoDeFakes:

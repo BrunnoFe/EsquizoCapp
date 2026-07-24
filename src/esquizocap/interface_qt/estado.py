@@ -17,8 +17,15 @@ from dataclasses import dataclass
 from enum import Enum, auto
 
 from esquizocap.hardware.constantes import CANAIS_BITALINO, MODOS_LUMINOSIDADE
+from esquizocap.hardware.modo_aquisicao import modo_do_rotulo
 
 TEXTO_CANAL_NAO_ESCOLHIDO: str = 'Selecione o canal ativo do Bitalino'
+
+TEXTO_PORTA_NAO_ENCONTRADA: str = (
+    'Nenhuma porta encontrada para este Bitalino. Verifique se ele está ligado e pareado no Windows'
+)
+"""Mora aqui, e não no controller, para que a regra de prontidão e o aviso da tela digam a
+MESMA coisa — duas redações do mesmo problema fariam o operador achar que são dois."""
 
 MODELOS_DISPONIVEIS: tuple[str, ...] = ('Preditor HSV baseado em Amplitude',)
 """Nomes dos modelos oferecidos no seletor.
@@ -77,6 +84,13 @@ class SelecaoUsuario:
     arduino_conectado: bool
     canal_bitalino: str
     mac_bitalino: str
+    modo_aquisicao: str
+    porta_bitalino: str
+    """Porta de acesso do BITalino, DERIVADA do MAC — não escolhida pelo operador.
+
+    Vazia quando o modo não precisa dela (Modo OpenSignals) ou quando a derivação não achou
+    o dispositivo. A regra abaixo distingue os dois casos.
+    """
 
 
 def avaliar_prontidao(
@@ -106,6 +120,23 @@ def avaliar_prontidao(
 
     if selecao.canal_bitalino not in CANAIS_VALIDOS or selecao.mac_bitalino not in macs_validos:
         return EstadoApp.CONFIGURANDO, 'Configure o Bitalino'
+
+    try:
+        modo = modo_do_rotulo(selecao.modo_aquisicao)
+    except ValueError:
+        return EstadoApp.CONFIGURANDO, 'Selecione o modo de aquisição do Bitalino'
+
+    if modo.exige_porta_de_acesso:
+        if not selecao.porta_bitalino:
+            return EstadoApp.CONFIGURANDO, f'{TEXTO_PORTA_NAO_ENCONTRADA}, ou use o Modo OpenSignals.'
+
+        # A porta do Arduino vem como "COM5 - descrição"; comparar só o prefixo até o " - ".
+        porta_arduino = selecao.porta_arduino.split(' - ')[0].strip()
+        if porta_arduino.upper() == selecao.porta_bitalino.upper():
+            return EstadoApp.CONFIGURANDO, (
+                f'Arduino e Bitalino não podem usar a mesma porta ({selecao.porta_bitalino}). '
+                'Confira qual é a porta de cada um.'
+            )
 
     return EstadoApp.PRONTO, 'Pressione "Começar aquisição"'
 

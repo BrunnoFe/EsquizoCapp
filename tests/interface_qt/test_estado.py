@@ -7,6 +7,7 @@ abrir uma janela Tk e simular cliques. Agora é entrada -> saída.
 
 import pytest
 
+from esquizocap.hardware.modo_aquisicao import ModoAquisicao
 from esquizocap.interface_qt.estado import (
     EstadoApp,
     SelecaoUsuario,
@@ -27,6 +28,8 @@ def selecao(**mudancas: object) -> SelecaoUsuario:
         'arduino_conectado': True,
         'canal_bitalino': '3',
         'mac_bitalino': MACS[0],
+        'modo_aquisicao': ModoAquisicao.OPENSIGNALS.value,
+        'porta_bitalino': '',
     }
     campos.update(mudancas)
     return SelecaoUsuario(**campos)  # type: ignore[arg-type]
@@ -112,6 +115,65 @@ def test_canal_inexistente_no_dispositivo_e_recusado(canal: str) -> None:
     estado, _mensagem = avaliar_prontidao(selecao=selecao(canal_bitalino=canal), macs_validos=MACS)
 
     assert estado is EstadoApp.CONFIGURANDO
+
+
+class TestModoDeAquisicao:
+    """O Modo Direto alcança o dispositivo por porta de acesso; o Modo OpenSignals, não.
+
+    A porta NÃO é escolhida pelo operador: a aplicação a deriva do MAC, lendo o hwid que o
+    sistema já expõe. Mas ela pode não existir — dispositivo não pareado, desligado, ou um
+    sistema fora do Windows —, e nesse caso o Modo Direto não tem como conectar.
+    """
+
+    def test_o_modo_opensignals_nao_precisa_de_porta(self) -> None:
+        estado, _mensagem = avaliar_prontidao(
+            selecao=selecao(modo_aquisicao=ModoAquisicao.OPENSIGNALS.value, porta_bitalino=''),
+            macs_validos=MACS,
+        )
+
+        assert estado is EstadoApp.PRONTO
+
+    def test_o_modo_direto_com_porta_derivada_fica_pronto(self) -> None:
+        estado, _mensagem = avaliar_prontidao(
+            selecao=selecao(modo_aquisicao=ModoAquisicao.DIRETO.value, porta_bitalino='COM6'),
+            macs_validos=MACS,
+        )
+
+        assert estado is EstadoApp.PRONTO
+
+    def test_o_modo_direto_sem_porta_nao_fica_pronto(self) -> None:
+        """Sem porta, conectar falharia lá na frente, com uma mensagem do sistema
+        operacional. Barrar aqui explica o que fazer."""
+        estado, mensagem = avaliar_prontidao(
+            selecao=selecao(modo_aquisicao=ModoAquisicao.DIRETO.value, porta_bitalino=''),
+            macs_validos=MACS,
+        )
+
+        assert estado is EstadoApp.CONFIGURANDO
+        assert 'parea' in mensagem.lower() or 'porta' in mensagem.lower()
+
+    def test_modo_desconhecido_nao_fica_pronto(self) -> None:
+        estado, _mensagem = avaliar_prontidao(
+            selecao=selecao(modo_aquisicao='Telepatia'), macs_validos=MACS
+        )
+
+        assert estado is EstadoApp.CONFIGURANDO
+
+    def test_a_porta_do_bitalino_nao_pode_ser_a_do_arduino(self) -> None:
+        """As duas conexões disputariam o mesmo recurso e nenhuma funcionaria. A derivação
+        já exclui a porta do BITalino da lista do Arduino, mas a configuração pode vir de um
+        JSON antigo — a regra fica aqui para valer nos dois caminhos."""
+        estado, mensagem = avaliar_prontidao(
+            selecao=selecao(
+                modo_aquisicao=ModoAquisicao.DIRETO.value,
+                porta_bitalino='COM6',
+                porta_arduino='COM6 - CH340',
+            ),
+            macs_validos=MACS,
+        )
+
+        assert estado is EstadoApp.CONFIGURANDO
+        assert 'mesma porta' in mensagem.lower()
 
 
 def test_a_mensagem_de_aquisicao_diz_se_esta_gravando() -> None:

@@ -24,8 +24,10 @@ from esquizocap.hardware.fabrica import (
     componentes_simulados,
     criar_arduino,
     criar_bitalino,
+    criar_leitores_por_modo,
     usar_fake,
 )
+from esquizocap.hardware.modo_aquisicao import ModoAquisicao
 
 __all__ = [
     'COMPONENTES_CONHECIDOS',
@@ -35,8 +37,10 @@ __all__ = [
     'ErroConexaoBitalino',
     'ErroStreamPerdido',
     'LeitorBitalino',
+    'ModoAquisicao',
     'componentes_simulados',
     'criar_arduino',
     'criar_bitalino',
+    'criar_leitores_por_modo',
     'usar_fake',
 ]
