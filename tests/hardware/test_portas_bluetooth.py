@@ -75,25 +75,19 @@ class TestDerivarPorta:
         ]
 
     def test_encontra_a_porta_do_mac_pedido(self) -> None:
-        porta = portas_bluetooth.derivar_porta(
-            mac=MAC_BITALINO, portas_do_sistema=self._portas_de_referencia()
-        )
+        porta = portas_bluetooth.derivar_porta(mac=MAC_BITALINO, portas_do_sistema=self._portas_de_referencia())
 
         assert porta == 'COM6'
 
     def test_ignora_maiuscula_e_minuscula_no_mac(self) -> None:
-        porta = portas_bluetooth.derivar_porta(
-            mac=MAC_BITALINO.lower(), portas_do_sistema=self._portas_de_referencia()
-        )
+        porta = portas_bluetooth.derivar_porta(mac=MAC_BITALINO.lower(), portas_do_sistema=self._portas_de_referencia())
 
         assert porta == 'COM6'
 
     def test_dispositivo_nao_pareado_nao_tem_porta(self) -> None:
         """Devolve None em vez de chutar: uma porta errada abre e não entrega nada, o que é
         pior de diagnosticar do que a ausência declarada."""
-        porta = portas_bluetooth.derivar_porta(
-            mac='12:25:33:81:92:44', portas_do_sistema=self._portas_de_referencia()
-        )
+        porta = portas_bluetooth.derivar_porta(mac='12:25:33:81:92:44', portas_do_sistema=self._portas_de_referencia())
 
         assert porta is None
 

@@ -41,9 +41,7 @@ def carregar_modelo(caminho_modelo: str | Path) -> ModeloPreditor:
             # coisa, o erro aparece na primeira chamada a `predict`.
             return cast(ModeloPreditor, pickle.load(file=arquivo_modelo))
     except (OSError, pickle.UnpicklingError, EOFError, AttributeError, ImportError) as erro:
-        raise ErroDeModelo(
-            f'Não foi possível carregar o modelo em "{caminho_modelo}": {erro}'
-        ) from erro
+        raise ErroDeModelo(f'Não foi possível carregar o modelo em "{caminho_modelo}": {erro}') from erro
 
 
 def prever_hue(modelo: ModeloPreditor, metrica: float) -> int:

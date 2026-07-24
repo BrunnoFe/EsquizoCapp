@@ -53,6 +53,6 @@ class ConectorBitalinoAssincrono:
             except ErroConexaoBitalino as erro:
                 ao_concluir(False, str(erro))
             else:
-                ao_concluir(True, "")
+                ao_concluir(True, '')
 
-        threading.Thread(target=alvo_da_thread, name="conectar-bitalino", daemon=True).start()
+        threading.Thread(target=alvo_da_thread, name='conectar-bitalino', daemon=True).start()

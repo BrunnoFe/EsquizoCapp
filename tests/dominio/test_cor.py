@@ -21,8 +21,8 @@ class TestConversaoHsv:
     @pytest.mark.parametrize(
         ('hue', 'canal_dominante'),
         [
-            (0, 0),    # vermelho
-            (85, 1),   # verde  (1/3 de 255)
+            (0, 0),  # vermelho
+            (85, 1),  # verde  (1/3 de 255)
             (170, 2),  # azul   (2/3 de 255)
         ],
     )

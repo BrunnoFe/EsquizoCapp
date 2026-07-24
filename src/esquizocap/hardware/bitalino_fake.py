@@ -60,9 +60,7 @@ class BitalinoSintetico(LeitorBitalino):
         # Mantém a mesma validação do leitor real, para que um endereço inválido falhe
         # igual nos dois modos.
         if len(endereco.split(':')) != 6:
-            raise ErroConexaoBitalino(
-                f'Endereço MAC inválido: "{endereco}". Selecione o endereço MAC do Bitalino.'
-            )
+            raise ErroConexaoBitalino(f'Endereço MAC inválido: "{endereco}". Selecione o endereço MAC do Bitalino.')
 
         self._conectado = True
         self._amostras_geradas = 0
@@ -158,6 +156,4 @@ class BitalinoSintetico(LeitorBitalino):
 
     def encerrar_stream(self) -> None:
         self._conectado = False
-        logger.info(
-            f'[FAKE] Stream simulado encerrado após {self._amostras_geradas} amostras'
-        )
+        logger.info(f'[FAKE] Stream simulado encerrado após {self._amostras_geradas} amostras')

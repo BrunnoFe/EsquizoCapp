@@ -41,9 +41,7 @@ class BitalinoLSL(LeitorBitalino):
         del taxa_amostragem_hz, canais  # Fixados no OpenSignals; ver docstring.
 
         if PADRAO_MAC.match(endereco) is None:
-            raise ErroConexaoBitalino(
-                f'Endereço MAC inválido: "{endereco}". Selecione o endereço MAC do Bitalino.'
-            )
+            raise ErroConexaoBitalino(f'Endereço MAC inválido: "{endereco}". Selecione o endereço MAC do Bitalino.')
 
         logger.info(f'Resolvendo stream LSL do BITalino com MAC "{endereco}" ...')
         streams = resolve_byprop(prop='type', value=endereco, minimum=1, timeout=TIMEOUT_RESOLUCAO_SEGUNDOS)
@@ -70,9 +68,7 @@ class BitalinoLSL(LeitorBitalino):
             ErroConexaoBitalino: Se o stream não estiver aberto.
         """
         if self._stream is None:
-            raise ErroConexaoBitalino(
-                'Stream do BITalino não está aberto. Chame `conectar` antes de ler amostras.'
-            )
+            raise ErroConexaoBitalino('Stream do BITalino não está aberto. Chame `conectar` antes de ler amostras.')
         return self._stream
 
     def definir_canal_ativo(self, canal: int) -> None:
@@ -104,9 +100,7 @@ class BitalinoLSL(LeitorBitalino):
 
     def ler_bloco(self, timeout: float, max_amostras: int) -> tuple[list[list[float]], list[float]]:
         try:
-            amostras, timestamps = self._stream_aberto().pull_chunk(
-                timeout=timeout, max_samples=max_amostras
-            )
+            amostras, timestamps = self._stream_aberto().pull_chunk(timeout=timeout, max_samples=max_amostras)
         except LostError as erro:
             raise ErroStreamPerdido(
                 f'Stream do BITalino perdido durante a leitura de um bloco de {max_amostras} amostras: {erro}'

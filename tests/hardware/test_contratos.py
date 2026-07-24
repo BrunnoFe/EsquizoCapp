@@ -102,9 +102,7 @@ class TestContratoBitalino:
         sobre LSL os ignora — mas eles têm que existir no contrato, senão a informação não tem
         caminho até a borda de hardware.
         """
-        parametros = tuple(
-            nome for nome in inspect.signature(classe.conectar).parameters if nome != 'self'
-        )
+        parametros = tuple(nome for nome in inspect.signature(classe.conectar).parameters if nome != 'self')
 
         assert parametros == PARAMETROS_DE_CONEXAO_BITALINO
 
@@ -130,9 +128,7 @@ class TestContratoBitalino:
         leitor.definir_canal_ativo(canal=6)
 
     @pytest.mark.parametrize('canal_invalido', [0, 7, -1])
-    def test_canal_ativo_fora_da_faixa_falha_alto(
-        self, classe: type[LeitorBitalino], canal_invalido: int
-    ) -> None:
+    def test_canal_ativo_fora_da_faixa_falha_alto(self, classe: type[LeitorBitalino], canal_invalido: int) -> None:
         """Canal inexistente é erro de programação, não entrada de usuário: a interface só
         oferece 1 a 6. Falhar alto aqui evita converter o canal errado em silêncio."""
         with pytest.raises(ValueError, match='[Cc]anal'):

@@ -59,8 +59,7 @@ class Configuracao:
         for mac in self.macs_bitalino:
             if len(mac.split(':')) != 6:
                 raise ErroDeConfiguracao(
-                    f'Endereço MAC inválido na configuração: "{mac}". '
-                    'O formato esperado é "20:17:09:18:60:29".'
+                    f'Endereço MAC inválido na configuração: "{mac}". O formato esperado é "20:17:09:18:60:29".'
                 )
 
         if not self.caminho_modelo.exists():
@@ -99,8 +98,7 @@ def carregar(caminho: Path = CAMINHO_PADRAO) -> Configuracao:
         # Falha alto em vez de ignorar: uma chave com nome errado significa que o usuário
         # achou que estava configurando algo, e não estava.
         raise ErroDeConfiguracao(
-            f'Chaves desconhecidas em "{caminho}": {sorted(desconhecidas)}. '
-            f'As válidas são: {sorted(campos_validos)}.'
+            f'Chaves desconhecidas em "{caminho}": {sorted(desconhecidas)}. As válidas são: {sorted(campos_validos)}.'
         )
 
     if 'macs_bitalino' in dados:

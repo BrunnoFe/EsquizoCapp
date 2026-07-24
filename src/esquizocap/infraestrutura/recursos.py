@@ -32,6 +32,5 @@ def validar() -> None:
     """
     if not ICONE.exists():
         raise ErroDeRecurso(
-            f'Ícone da aplicação não encontrado em "{ICONE}". '
-            'Rode a aplicação a partir da raiz do projeto.'
+            f'Ícone da aplicação não encontrado em "{ICONE}". Rode a aplicação a partir da raiz do projeto.'
         )

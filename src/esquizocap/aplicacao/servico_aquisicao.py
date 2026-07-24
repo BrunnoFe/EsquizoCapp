@@ -181,10 +181,7 @@ class ServicoAquisicao:
         self._thread.join(timeout=timeout)
 
         if self._thread.is_alive():
-            logger.error(
-                f'A thread de aquisição não terminou em {timeout} s. '
-                'O stream do BITalino pode estar travado.'
-            )
+            logger.error(f'A thread de aquisição não terminou em {timeout} s. O stream do BITalino pode estar travado.')
         else:
             logger.info('Thread de aquisição encerrada')
 
@@ -247,9 +244,7 @@ class ServicoAquisicao:
             self._publicar(
                 EventoErro(
                     erro=erro,
-                    mensagem_usuario=(
-                        f'A aquisição parou: {erro}\n\nVerifique o cabo USB do Arduino.'
-                    ),
+                    mensagem_usuario=(f'A aquisição parou: {erro}\n\nVerifique o cabo USB do Arduino.'),
                 )
             )
 

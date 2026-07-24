@@ -18,11 +18,11 @@ class BandaEeg:
 
 
 BANDAS_EEG: tuple[BandaEeg, ...] = (
-    BandaEeg("Delta", "0.5–4 Hz"),
-    BandaEeg("Theta", "4–8 Hz"),
-    BandaEeg("Alpha", "8–13 Hz"),
-    BandaEeg("Beta", "13–30 Hz"),
-    BandaEeg("Gamma", "30–45 Hz"),
+    BandaEeg('Delta', '0.5–4 Hz'),
+    BandaEeg('Theta', '4–8 Hz'),
+    BandaEeg('Alpha', '8–13 Hz'),
+    BandaEeg('Beta', '13–30 Hz'),
+    BandaEeg('Gamma', '30–45 Hz'),
 )
 
 _NOMES_BANDAS_EEG: tuple[str, ...] = tuple(banda.nome for banda in BANDAS_EEG)
@@ -40,7 +40,7 @@ def indice_da_banda(faixa_frequencia_do_dominio: str) -> int:
         nenhuma banda conhecida, devolve 0 (Delta) em vez de lançar — uma banda nova
         do lado do domínio não deveria derrubar a GUI.
     """
-    primeira_palavra = faixa_frequencia_do_dominio.split(" ", 1)[0]
+    primeira_palavra = faixa_frequencia_do_dominio.split(' ', 1)[0]
     try:
         return _NOMES_BANDAS_EEG.index(primeira_palavra)
     except ValueError:

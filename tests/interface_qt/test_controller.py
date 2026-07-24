@@ -47,9 +47,7 @@ def aplicacao_qt() -> QCoreApplication:
 
 
 @pytest.fixture
-def controlador(
-    aplicacao_qt: QCoreApplication, monkeypatch: pytest.MonkeyPatch, modelo: object
-) -> EsquizoController:
+def controlador(aplicacao_qt: QCoreApplication, monkeypatch: pytest.MonkeyPatch, modelo: object) -> EsquizoController:
     monkeypatch.setenv(fabrica.NOME_VARIAVEL_FAKE, 'tudo')
     configuracao = Configuracao(macs_bitalino=(MAC,))
     return EsquizoController(configuracao=configuracao, modelo=modelo)  # type: ignore[arg-type]
@@ -105,9 +103,7 @@ class TestSeletorDeCanal:
         assert '6 bits' in rotulos[4], 'o canal 5 tem 6 bits'
         assert 'evite' in rotulos[5].lower(), 'o canal 6 precisa do aviso'
 
-    def test_escolher_pela_posicao_seleciona_o_canal_certo(
-        self, controlador: EsquizoController
-    ) -> None:
+    def test_escolher_pela_posicao_seleciona_o_canal_certo(self, controlador: EsquizoController) -> None:
         controlador.definirCanalPorIndice(2)
 
         assert controlador.canalBitalino == '3', 'a posição 2 é o canal 3'
@@ -128,9 +124,7 @@ class TestSeletorDeCanal:
 
         assert controlador.canalBitalino == '3', 'a escolha anterior permanece'
 
-    def test_escolher_um_canal_de_baixa_resolucao_avisa_mas_deixa(
-        self, controlador: EsquizoController
-    ) -> None:
+    def test_escolher_um_canal_de_baixa_resolucao_avisa_mas_deixa(self, controlador: EsquizoController) -> None:
         """O eletrodo é físico: negar a leitura de quem plugou no A5 é pior que avisar."""
         controlador.definirCanalPorIndice(4)
 
@@ -142,9 +136,7 @@ class TestSeletorDeCanal:
 
         assert controlador.avisoDoCanal == ''
 
-    def test_trocar_o_canal_pela_posicao_avisa_os_leitores(
-        self, controlador: EsquizoController
-    ) -> None:
+    def test_trocar_o_canal_pela_posicao_avisa_os_leitores(self, controlador: EsquizoController) -> None:
         """O caminho da GUI é `definirCanalPorIndice`; ele precisa propagar como o setter."""
         espioes = {modo: LeitorEspiao(modo.name) for modo in ModoAquisicao}
         controlador._leitores_por_modo = espioes  # type: ignore[assignment]
@@ -198,9 +190,7 @@ class TestPortasSeriais:
 
     HWID_BITALINO = r'BTHENUM\{0000}_LOCALMFG&0002\7&2B886E8&2&201709186029_C00000000'
 
-    def _com_portas_reais(
-        self, controlador: EsquizoController, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def _com_portas_reais(self, controlador: EsquizoController, monkeypatch: pytest.MonkeyPatch) -> None:
         """Simula uma máquina com o BITalino na COM6 e um Arduino na COM10."""
         from esquizocap.hardware import portas_bluetooth
 
@@ -256,9 +246,7 @@ class TestTaxaAcordada:
         assert int(controlador.taxaAmostragem) >= 100
         assert controlador.taxaAmostragem in controlador.taxasSelecionaveis
 
-    def test_o_dropdown_sempre_oferece_as_quatro_taxas_do_dispositivo(
-        self, controlador: EsquizoController
-    ) -> None:
+    def test_o_dropdown_sempre_oferece_as_quatro_taxas_do_dispositivo(self, controlador: EsquizoController) -> None:
         """A lista não encolhe com o modo de predição — o que muda é quais estão
         habilitadas. Ver `test_as_taxas_invalidas_aparecem_desabilitadas_e_nao_somem`."""
         for modo in (ModoAnalise.AMPLITUDE.value, ModoAnalise.FREQUENCIA.value):
@@ -298,9 +286,7 @@ class TestTaxaAcordada:
 
         assert conexoes[-1]['taxa_amostragem_hz'] == 10
 
-    def test_a_taxa_nao_e_editavel_com_o_dispositivo_conectado(
-        self, controlador: EsquizoController
-    ) -> None:
+    def test_a_taxa_nao_e_editavel_com_o_dispositivo_conectado(self, controlador: EsquizoController) -> None:
         """A taxa é acordada no `conectar`. Aceitar a troca depois seria mentir: nada mudaria
         até reconectar, e a duração exibida passaria a descrever uma taxa que não está em uso."""
         controlador._leitores_por_modo = {  # type: ignore[assignment]
@@ -310,9 +296,7 @@ class TestTaxaAcordada:
 
         assert controlador.taxaAmostragemEditavel is False
 
-    def test_as_taxas_invalidas_aparecem_desabilitadas_e_nao_somem(
-        self, controlador: EsquizoController
-    ) -> None:
+    def test_as_taxas_invalidas_aparecem_desabilitadas_e_nao_somem(self, controlador: EsquizoController) -> None:
         """Sumir com a opção esconde a informação: quem procura 10 Hz precisa ver que ela
         existe e está indisponível, não achar que a aplicação a esqueceu."""
         controlador.definirModoAnalise(ModoAnalise.FREQUENCIA.value)

@@ -94,9 +94,7 @@ class TestOQueFaltaVemNaOrdemDePreenchimento:
 
     def test_arduino_configurado_mas_nao_conectado(self) -> None:
         """O caso mais fácil de errar: tudo escolhido, mas o botão "Conectar" não foi clicado."""
-        estado, mensagem = avaliar_prontidao(
-            selecao=selecao(arduino_conectado=False), macs_validos=MACS
-        )
+        estado, mensagem = avaliar_prontidao(selecao=selecao(arduino_conectado=False), macs_validos=MACS)
 
         assert estado is EstadoApp.CONFIGURANDO
         assert 'Conectar' in mensagem
@@ -111,9 +109,7 @@ class TestOQueFaltaVemNaOrdemDePreenchimento:
         assert mensagem == 'Configure o Bitalino'
 
     def test_mac_fora_da_configuracao(self) -> None:
-        estado, _mensagem = avaliar_prontidao(
-            selecao=selecao(mac_bitalino='00:00:00:00:00:00'), macs_validos=MACS
-        )
+        estado, _mensagem = avaliar_prontidao(selecao=selecao(mac_bitalino='00:00:00:00:00:00'), macs_validos=MACS)
 
         assert estado is EstadoApp.CONFIGURANDO
 
@@ -168,9 +164,7 @@ class TestModoDeAquisicao:
         assert 'parea' in mensagem.lower() or 'porta' in mensagem.lower()
 
     def test_modo_desconhecido_nao_fica_pronto(self) -> None:
-        estado, _mensagem = avaliar_prontidao(
-            selecao=selecao(modo_aquisicao='Telepatia'), macs_validos=MACS
-        )
+        estado, _mensagem = avaliar_prontidao(selecao=selecao(modo_aquisicao='Telepatia'), macs_validos=MACS)
 
         assert estado is EstadoApp.CONFIGURANDO
 

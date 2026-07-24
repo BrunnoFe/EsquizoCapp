@@ -140,9 +140,7 @@ class TestCicloDeVida:
 
 
 class TestPropagacaoDeErro:
-    def test_o_stream_perdido_vira_evento_e_nao_mata_a_thread_em_silencio(
-        self, modelo: ModeloPreditor
-    ) -> None:
+    def test_o_stream_perdido_vira_evento_e_nao_mata_a_thread_em_silencio(self, modelo: ModeloPreditor) -> None:
         """REGRESSÃO: um erro dentro da thread NÃO pode sumir.
 
         Sem isto, o BITalino cair no meio da aquisição faria a thread morrer calada: a
@@ -222,16 +220,12 @@ class TestControles:
 
         eventos = coletar_ate(
             servico,
-            lambda e: any(
-                isinstance(x, EventoResultado) and x.resultado.saturacao == 10 for x in e
-            ),
+            lambda e: any(isinstance(x, EventoResultado) and x.resultado.saturacao == 10 for x in e),
         )
         servico.parar()
 
         atualizados = [
-            evento
-            for evento in eventos
-            if isinstance(evento, EventoResultado) and evento.resultado.saturacao == 10
+            evento for evento in eventos if isinstance(evento, EventoResultado) and evento.resultado.saturacao == 10
         ]
         assert atualizados, 'A thread continuou usando os controles antigos'
         assert atualizados[0].resultado.brilho == 20

@@ -26,9 +26,7 @@ def hsv_para_rgb_hex(hue: int, saturacao: int, brilho: int) -> tuple[str, tuple[
 
     # Desempacotado em três, e não montado por compreensão: só assim o tipo fica
     # `tuple[int, int, int]` de fato, e não `tuple[int, ...]` de tamanho desconhecido.
-    vermelho, verde, azul = colorsys.hsv_to_rgb(
-        hue_normalizado, saturacao_normalizada, brilho_normalizado
-    )
+    vermelho, verde, azul = colorsys.hsv_to_rgb(hue_normalizado, saturacao_normalizada, brilho_normalizado)
 
     rgb: tuple[int, int, int] = (
         int(vermelho * VALOR_MAXIMO_CANAL),

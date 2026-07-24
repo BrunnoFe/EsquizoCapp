@@ -87,9 +87,7 @@ class TestIntervaloDePredicao:
     def test_uma_predicao_por_intervalo_de_sinal(self, modelo: ModeloPreditor) -> None:
         # O fake gera 1000 Hz, então 100 amostras = 100 ms de sinal.
         ciclo, _leitor, arduino = montar_ciclo(modelo, ModoAnalise.AMPLITUDE)
-        controles = ControlesUsuario(
-            saturacao=SATURACAO, brilho=BRILHO, intervalo_predicao_segundos=0.1
-        )
+        controles = ControlesUsuario(saturacao=SATURACAO, brilho=BRILHO, intervalo_predicao_segundos=0.1)
 
         resultados = [ciclo.processar_amostra(controles=controles) for _ in range(1000)]
         previstos = [r for r in resultados if r is not None]
@@ -106,9 +104,7 @@ class TestIntervaloDePredicao:
         LSL volta a acumular atraso — e a app volta a prever cor a partir de sinal velho.
         """
         ciclo, leitor, _arduino = montar_ciclo(modelo, ModoAnalise.AMPLITUDE)
-        controles = ControlesUsuario(
-            saturacao=SATURACAO, brilho=BRILHO, intervalo_predicao_segundos=0.5
-        )
+        controles = ControlesUsuario(saturacao=SATURACAO, brilho=BRILHO, intervalo_predicao_segundos=0.5)
 
         for _ in range(300):
             ciclo.processar_amostra(controles=controles)
@@ -164,9 +160,7 @@ class TestModoFrequencia:
     def test_o_intervalo_de_predicao_nao_afeta_a_frequencia(self, modelo: ModeloPreditor) -> None:
         """No modo Frequência a cadência já vem do tamanho da janela: o intervalo é ignorado."""
         ciclo, _leitor, arduino = montar_ciclo(modelo, ModoAnalise.FREQUENCIA, tamanho_janela=1000)
-        controles = ControlesUsuario(
-            saturacao=SATURACAO, brilho=BRILHO, intervalo_predicao_segundos=999.0
-        )
+        controles = ControlesUsuario(saturacao=SATURACAO, brilho=BRILHO, intervalo_predicao_segundos=999.0)
 
         ciclo.processar_amostra(controles=controles)
         resultado = ciclo.processar_amostra(controles=controles)
@@ -186,9 +180,7 @@ class TestModoFrequencia:
 
         Antes da correção, a janela de 3000 reportava ~29,3 Hz e classificava como Beta.
         """
-        ciclo, leitor, _arduino = montar_ciclo(
-            modelo, ModoAnalise.FREQUENCIA, tamanho_janela=tamanho_janela
-        )
+        ciclo, leitor, _arduino = montar_ciclo(modelo, ModoAnalise.FREQUENCIA, tamanho_janela=tamanho_janela)
         assert leitor.taxa_amostragem_nominal() == 1000
 
         resultado = None
@@ -196,8 +188,7 @@ class TestModoFrequencia:
             resultado = ciclo.processar_amostra(controles=CONTROLES)
 
         assert resultado.metrica_bruta == pytest.approx(10.0, abs=0.5), (
-            f'Com janela de {tamanho_janela} o ciclo reportou '
-            f'{resultado.metrica_bruta:.2f} Hz para um sinal de 10 Hz.'
+            f'Com janela de {tamanho_janela} o ciclo reportou {resultado.metrica_bruta:.2f} Hz para um sinal de 10 Hz.'
         )
         assert resultado.faixa_frequencia is not None
         assert resultado.faixa_frequencia.startswith('Alpha')

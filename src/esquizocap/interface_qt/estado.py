@@ -69,9 +69,7 @@ def rotulo_do_canal(canal: int) -> str:
     return f'{canal} · {bits} bits'
 
 
-CANAIS_COM_ROTULO: tuple[tuple[int, str], ...] = tuple(
-    (canal, rotulo_do_canal(canal)) for canal in CANAIS_BITALINO
-)
+CANAIS_COM_ROTULO: tuple[tuple[int, str], ...] = tuple((canal, rotulo_do_canal(canal)) for canal in CANAIS_BITALINO)
 """Pares `(canal, rótulo)` na ordem do seletor.
 
 FONTE ÚNICA da correspondência entre posição e canal. O rótulo mostra a resolução, então
@@ -217,9 +215,7 @@ class SelecaoUsuario:
     """
 
 
-def avaliar_prontidao(
-    selecao: SelecaoUsuario, macs_validos: Sequence[str]
-) -> tuple[EstadoApp, str]:
+def avaliar_prontidao(selecao: SelecaoUsuario, macs_validos: Sequence[str]) -> tuple[EstadoApp, str]:
     """Diz se dá para começar a aquisição, e o que falta caso não dê.
 
     A ordem das checagens é a ordem em que o usuário preenche a tela — modelo, Arduino,

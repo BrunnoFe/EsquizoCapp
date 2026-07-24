@@ -84,7 +84,7 @@ def criar_configuracao_inicial(
         intervalo_amostragem_ms=900,
         tamanho_janela_amostras=500,
         gravar_aquisicao=True,
-        sensor="EEG",
+        sensor='EEG',
         modelo_selecionado=MODELOS_DISPONIVEIS[0],
         porta_arduino=porta_arduino_inicial,
         baud_rate=str(constantes.BAUDRATE_PADRAO),

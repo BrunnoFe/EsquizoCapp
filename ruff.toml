@@ -7,6 +7,12 @@ target-version = "py312"
 # Ignora o ambiente virtual e o export do Godot na varredura.
 extend-exclude = [".venv", "engine"]
 
+[format]
+# O código do projeto usa aspas SIMPLES. Sem esta linha o `ruff format` assume o padrão dele
+# (aspas duplas) e reprova o repositório inteiro — o comando ficava inutilizável, apesar de
+# as convenções mandarem rodá-lo antes de considerar uma mudança pronta.
+quote-style = "single"
+
 [lint]
 # Conjunto enxuto: erros do pyflakes (F), estilo pycodestyle (E),
 # imports (I) e modernização de sintaxe (UP).

@@ -59,9 +59,7 @@ class TestTamanhoDoFrame:
         ('quantidade_canais', 'bytes_esperados'),
         [(1, 3), (2, 4), (3, 6), (4, 7), (5, 8), (6, 8)],
     )
-    def test_tamanho_segue_o_empacotamento_do_firmware(
-        self, quantidade_canais: int, bytes_esperados: int
-    ) -> None:
+    def test_tamanho_segue_o_empacotamento_do_firmware(self, quantidade_canais: int, bytes_esperados: int) -> None:
         """Os canais 1 a 4 são de 10 bits e os canais 5 e 6 de 6 bits, então o frame NÃO
         cresce de forma linear — 5 e 6 canais cabem nos MESMOS 8 bytes. Errar isto
         dessincroniza a leitura para sempre."""
@@ -177,9 +175,7 @@ class TestMontagemDaLinha:
     @pytest.mark.parametrize('canal_ativo', [1, 2, 3, 4])
     def test_so_o_canal_ativo_vira_microvolts(self, canal_ativo: int) -> None:
         """Os demais saem em ADU de propósito: converter sem saber o sensor não significa nada."""
-        linha = protocolo.montar_linha(
-            leitura=self._leitura(), canais=[1, 2, 3, 4, 5, 6], canal_ativo=canal_ativo
-        )
+        linha = protocolo.montar_linha(leitura=self._leitura(), canais=[1, 2, 3, 4, 5, 6], canal_ativo=canal_ativo)
 
         adu_do_ativo = ADU_ESPERADOS_SEIS_CANAIS[canal_ativo - 1]
         esperado = protocolo.converter_para_microvolts(adu=adu_do_ativo, canal=canal_ativo)
@@ -240,12 +236,12 @@ class TestConversaoParaMicrovolts:
 
     def test_o_passo_de_6_bits_e_16x_mais_grosso_que_o_de_10(self) -> None:
         """A razão de ser do aviso na interface: 64 níveis contra 1024 para o mesmo sinal."""
-        passo_dez_bits = protocolo.converter_para_microvolts(
-            adu=513, canal=1
-        ) - protocolo.converter_para_microvolts(adu=512, canal=1)
-        passo_seis_bits = protocolo.converter_para_microvolts(
-            adu=33, canal=5
-        ) - protocolo.converter_para_microvolts(adu=32, canal=5)
+        passo_dez_bits = protocolo.converter_para_microvolts(adu=513, canal=1) - protocolo.converter_para_microvolts(
+            adu=512, canal=1
+        )
+        passo_seis_bits = protocolo.converter_para_microvolts(adu=33, canal=5) - protocolo.converter_para_microvolts(
+            adu=32, canal=5
+        )
 
         assert passo_seis_bits == pytest.approx(passo_dez_bits * 16, rel=0.01)
 

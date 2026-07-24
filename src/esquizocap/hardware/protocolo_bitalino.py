@@ -114,8 +114,7 @@ def comando_definir_taxa(taxa_hz: int) -> int:
     """
     if taxa_hz not in CODIGOS_DE_TAXA:
         raise ValueError(
-            f'Taxa de amostragem não suportada pelo BITalino: {taxa_hz} Hz. '
-            f'As aceitas são {sorted(CODIGOS_DE_TAXA)}.'
+            f'Taxa de amostragem não suportada pelo BITalino: {taxa_hz} Hz. As aceitas são {sorted(CODIGOS_DE_TAXA)}.'
         )
 
     return (CODIGOS_DE_TAXA[taxa_hz] << 6) | 0b11
@@ -141,8 +140,7 @@ def comando_iniciar(canais: list[int]) -> int:
     fora_da_faixa = [canal for canal in canais_unicos if canal not in CANAIS_BITALINO]
     if fora_da_faixa:
         raise ValueError(
-            f'Canal inexistente no BITalino: {fora_da_faixa}. '
-            f'Os canais válidos são {list(CANAIS_BITALINO)}.'
+            f'Canal inexistente no BITalino: {fora_da_faixa}. Os canais válidos são {list(CANAIS_BITALINO)}.'
         )
 
     comando = 0b1

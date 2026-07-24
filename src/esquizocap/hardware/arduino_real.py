@@ -44,9 +44,7 @@ class ArduinoSerial(ControladorLedArduino):
         try:
             self._porta_serial.open()
         except (serial.SerialException, PermissionError) as erro:
-            raise ErroConexaoArduino(
-                f'Falha ao abrir a porta serial "{porta}" a {baudrate} baud: {erro}'
-            ) from erro
+            raise ErroConexaoArduino(f'Falha ao abrir a porta serial "{porta}" a {baudrate} baud: {erro}') from erro
 
         if self._porta_serial.is_open is False:
             raise ErroConexaoArduino(

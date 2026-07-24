@@ -66,8 +66,7 @@ def validar_canal(canal: int) -> None:
     """
     if canal not in RESOLUCAO_POR_CANAL:
         raise ValueError(
-            f'Canal inexistente no BITalino: {canal}. '
-            f'Os canais válidos são {sorted(RESOLUCAO_POR_CANAL)}.'
+            f'Canal inexistente no BITalino: {canal}. Os canais válidos são {sorted(RESOLUCAO_POR_CANAL)}.'
         )
 
 
@@ -79,6 +78,7 @@ def resolucao_bits(canal: int) -> int:
     """
     validar_canal(canal=canal)
     return RESOLUCAO_POR_CANAL[canal]
+
 
 TAXAS_AMOSTRAGEM_SUPORTADAS: tuple[int, ...] = (1, 10, 100, 1000)
 """Taxas de amostragem que o BITalino aceita, em Hz. Fato do dispositivo, não uma escolha.

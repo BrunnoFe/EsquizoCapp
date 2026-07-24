@@ -30,11 +30,11 @@ class LeituraAoVivo:
     inicio_transicao_ms: float = 0.0
     """Instante (relógio monotônico, em ms) em que a transição atual começou."""
 
-    frequencia_dominante_texto: str = "0.0"
+    frequencia_dominante_texto: str = '0.0'
     """Frequência dominante do último bloco, já formatada (modo Frequência)."""
 
     indice_banda: int = 2
     """Índice em `bandas_eeg.BANDAS_EEG` da banda do último bloco (modo Frequência)."""
 
-    amplitude_texto: str = "0.0"
+    amplitude_texto: str = '0.0'
     """Amplitude bruta da última amostra, já formatada (modo Amplitude)."""

@@ -64,9 +64,7 @@ def extrair_sinal_do_bloco(bloco: list[list[float]], canal: int) -> SinalEEG:
     return coluna
 
 
-def filtro_passa_baixa(
-    dados: SinalEEG, corte: float, taxa_amostragem: float, ordem: int = ORDEM_FILTRO
-) -> SinalEEG:
+def filtro_passa_baixa(dados: SinalEEG, corte: float, taxa_amostragem: float, ordem: int = ORDEM_FILTRO) -> SinalEEG:
     """Aplica um filtro Butterworth passa-baixa, sem defasagem (filtfilt)."""
     frequencia_nyquist: float = 0.5 * taxa_amostragem
     corte_normalizado: float = corte / frequencia_nyquist
@@ -76,9 +74,7 @@ def filtro_passa_baixa(
     return cast(SinalEEG, filtfilt(b, a, dados))
 
 
-def filtro_passa_alta(
-    dados: SinalEEG, corte: float, taxa_amostragem: float, ordem: int = ORDEM_FILTRO
-) -> SinalEEG:
+def filtro_passa_alta(dados: SinalEEG, corte: float, taxa_amostragem: float, ordem: int = ORDEM_FILTRO) -> SinalEEG:
     """Aplica um filtro Butterworth passa-alta, sem defasagem (filtfilt)."""
     frequencia_nyquist: float = 0.5 * taxa_amostragem
     corte_normalizado: float = corte / frequencia_nyquist
@@ -140,6 +136,4 @@ def analisar_frequencia(
         f'Média de ativação = {numpy.mean(eeg, dtype="float16")}'
     )
 
-    return ResultadoAnaliseFrequencia(
-        frequencia=frequencia_dominante, potencia=potencia_dominante, faixa=faixa
-    )
+    return ResultadoAnaliseFrequencia(frequencia=frequencia_dominante, potencia=potencia_dominante, faixa=faixa)

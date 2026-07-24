@@ -68,9 +68,7 @@ class Coleta:
 
 
 def montar_argumentos() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description='Compara Modo OpenSignals e Modo Direto lendo o mesmo eletrodo.'
-    )
+    parser = argparse.ArgumentParser(description='Compara Modo OpenSignals e Modo Direto lendo o mesmo eletrodo.')
     parser.add_argument('--modo', choices=[MODO_AMBOS, MODO_OPENSIGNALS, MODO_DIRETO], default=MODO_AMBOS)
     parser.add_argument('--mac', default='', help='MAC do dispositivo, para o Modo OpenSignals.')
     parser.add_argument('--porta', default='', help='Porta de acesso (ex.: COM7), para o Modo Direto.')
@@ -100,9 +98,7 @@ def coletar(leitor: LeitorBitalino, modo: str, canal_ativo: int, segundos: float
     total = 0
 
     while time.monotonic() < limite:
-        bloco, _timestamps = leitor.ler_bloco(
-            timeout=TIMEOUT_LEITURA_SEGUNDOS, max_amostras=AMOSTRAS_POR_LEITURA
-        )
+        bloco, _timestamps = leitor.ler_bloco(timeout=TIMEOUT_LEITURA_SEGUNDOS, max_amostras=AMOSTRAS_POR_LEITURA)
 
         for linha in bloco:
             total += 1
@@ -134,9 +130,7 @@ def coletar_opensignals(mac: str, canal_ativo: int, segundos: float) -> Coleta:
     with BitalinoLSL() as leitor:
         # Taxa e canais são IGNORADOS neste modo — quem os fixou foi o OpenSignals. Vão
         # preenchidos com o padrão só porque o contrato os exige.
-        leitor.conectar(
-            endereco=mac, taxa_amostragem_hz=TAXA_AMOSTRAGEM_PADRAO_HZ, canais=list(CANAIS_BITALINO)
-        )
+        leitor.conectar(endereco=mac, taxa_amostragem_hz=TAXA_AMOSTRAGEM_PADRAO_HZ, canais=list(CANAIS_BITALINO))
         print(f'  Conectado. Coletando {segundos:.0f}s ...')
         return coletar(leitor=leitor, modo=MODO_OPENSIGNALS, canal_ativo=canal_ativo, segundos=segundos)
 

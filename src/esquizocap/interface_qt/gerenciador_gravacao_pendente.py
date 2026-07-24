@@ -11,7 +11,7 @@ from esquizocap.dominio.ciclo_aquisicao import ResultadoCiclo
 from esquizocap.infraestrutura import persistencia
 from esquizocap.infraestrutura.persistencia import ErroDeGravacao
 
-__all__ = ["ErroDeGravacao", "GerenciadorGravacaoPendente"]
+__all__ = ['ErroDeGravacao', 'GerenciadorGravacaoPendente']
 
 
 class GerenciadorGravacaoPendente:
@@ -20,7 +20,7 @@ class GerenciadorGravacaoPendente:
 
     def __init__(self) -> None:
         self._resultados: list[ResultadoCiclo] = []
-        self.nome_sugerido: str = ""
+        self.nome_sugerido: str = ''
 
     @property
     def pendente(self) -> bool:

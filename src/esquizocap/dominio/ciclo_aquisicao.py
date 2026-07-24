@@ -325,9 +325,7 @@ class CicloAquisicao:
 
         # A amostra foi LIDA de qualquer forma — é isso que impede o buffer do LSL de
         # acumular atraso. O que o intervalo controla é só a PREDIÇÃO.
-        if not self._deve_prever(
-            timestamp=timestamp, intervalo_segundos=controles.intervalo_predicao_segundos
-        ):
+        if not self._deve_prever(timestamp=timestamp, intervalo_segundos=controles.intervalo_predicao_segundos):
             return None
 
         self._timestamp_ultima_predicao = timestamp
@@ -341,9 +339,7 @@ class CicloAquisicao:
         )
 
     def _processar_frequencia(self, controles: ControlesUsuario) -> ResultadoCiclo | None:
-        bloco, timestamps = self._leitor.ler_bloco(
-            timeout=TIMEOUT_LEITURA_SEGUNDOS, max_amostras=TAMANHO_BLOCO_LEITURA
-        )
+        bloco, timestamps = self._leitor.ler_bloco(timeout=TIMEOUT_LEITURA_SEGUNDOS, max_amostras=TAMANHO_BLOCO_LEITURA)
 
         # Bloco vazio = o timeout expirou sem sinal novo. Não é erro; é só um ciclo sem
         # leitura. Sair cedo evita empilhar arrays vazios no acumulador.
@@ -366,9 +362,7 @@ class CicloAquisicao:
             eeg=self._amostras_acumuladas, taxa_amostragem=self._leitor.taxa_amostragem_nominal()
         )
 
-        janela = JanelaAnalisada(
-            amostras=self._amostras_acumuladas, timestamps=self._timestamps_acumulados
-        )
+        janela = JanelaAnalisada(amostras=self._amostras_acumuladas, timestamps=self._timestamps_acumulados)
 
         resultado = self._prever_e_distribuir(
             metrica=float(analise.frequencia),
@@ -413,9 +407,7 @@ class CicloAquisicao:
 
         # O Arduino é o único consumidor que sobrou. Os parâmetros visuais são
         # calculados e devolvidos, mas não vão para lugar nenhum.
-        self._arduino.enviar_comando_cor(
-            modo=self._modo_luminosidade, hue=hue, saturacao=saturacao, brilho=brilho
-        )
+        self._arduino.enviar_comando_cor(modo=self._modo_luminosidade, hue=hue, saturacao=saturacao, brilho=brilho)
 
         return ResultadoCiclo(
             metrica_bruta=metrica,

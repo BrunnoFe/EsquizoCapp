@@ -44,9 +44,7 @@ class ArduinoFake(ControladorLedArduino):
 
     def desconectar(self) -> None:
         self._conectado = False
-        logger.info(
-            f'[FAKE] Arduino simulado desconectado após {self.comandos_enviados} comandos'
-        )
+        logger.info(f'[FAKE] Arduino simulado desconectado após {self.comandos_enviados} comandos')
 
     def enviar_comando_cor(self, modo: int, hue: int, saturacao: int, brilho: int) -> None:
         # Espelha o controlador real: enviar numa porta fechada é `ErroConexaoArduino` lá,

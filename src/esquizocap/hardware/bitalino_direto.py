@@ -114,9 +114,7 @@ class BitalinoDireto(LeitorBitalino):
         except ValueError as erro:
             raise ErroConexaoBitalino(f'Parâmetros de aquisição inválidos: {erro}') from erro
 
-        logger.info(
-            f'Abrindo porta de acesso "{endereco}" a {taxa_amostragem_hz} Hz, canais {sorted(set(canais))} ...'
-        )
+        logger.info(f'Abrindo porta de acesso "{endereco}" a {taxa_amostragem_hz} Hz, canais {sorted(set(canais))} ...')
 
         porta = self._abrir_porta(endereco=endereco)
 
@@ -171,9 +169,7 @@ class BitalinoDireto(LeitorBitalino):
                 return serial.Serial(endereco, protocolo_bitalino.BAUDRATE)
             except (SerialException, OSError, ValueError) as erro:
                 ultimo_erro = erro
-                logger.info(
-                    f'Tentativa {tentativa}/{TENTATIVAS_DE_ABERTURA} de abrir "{endereco}" falhou: {erro}'
-                )
+                logger.info(f'Tentativa {tentativa}/{TENTATIVAS_DE_ABERTURA} de abrir "{endereco}" falhou: {erro}')
 
                 if tentativa < TENTATIVAS_DE_ABERTURA:
                     time.sleep(PAUSA_ENTRE_TENTATIVAS_SEGUNDOS)
@@ -258,9 +254,7 @@ class BitalinoDireto(LeitorBitalino):
             )
 
         leitura = protocolo_bitalino.decodificar_frame(frame=frame, quantidade_canais=len(self._canais))
-        return protocolo_bitalino.montar_linha(
-            leitura=leitura, canais=self._canais, canal_ativo=self._canal_ativo
-        )
+        return protocolo_bitalino.montar_linha(leitura=leitura, canais=self._canais, canal_ativo=self._canal_ativo)
 
     def ler_amostra(self, timeout: float) -> tuple[list[float], float] | tuple[None, None]:
         """Lê uma amostra. NUNCA devolve `(None, None)`: ver o cabeçalho do módulo."""
