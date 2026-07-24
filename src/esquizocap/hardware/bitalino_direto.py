@@ -42,6 +42,20 @@ PAUSA_ENTRE_COMANDOS_SEGUNDOS: float = 0.1
 CANAL_ATIVO_PADRAO: int = 1
 """Canal convertido enquanto a interface não informar outro."""
 
+TENTATIVAS_DE_ABERTURA: int = 4
+PAUSA_ENTRE_TENTATIVAS_SEGUNDOS: float = 2.0
+"""Quantas vezes insistir em abrir a porta, e quanto esperar entre as tentativas.
+
+Numa porta serial VIRTUAL sobre Bluetooth, abrir não é instantâneo: o Windows precisa
+negociar o link RFCOMM, e enquanto isso o `open` estoura com "o tempo limite do semáforo
+expirou" (erro 121). Acontece de forma previsível logo depois de outro programa soltar o
+dispositivo — fechar o OpenSignals e conectar em seguida é exatamente esse caso.
+
+Isto NÃO é o mesmo que o retry de leitura, que foi deliberadamente recusado: ali, insistir
+esconderia um dispositivo ruim. Aqui, a primeira falha não diz nada sobre a saúde do
+dispositivo — só que o link ainda está subindo.
+"""
+
 FOLGA_DO_BLOCO: float = 3.0
 """Quantas vezes a duração teórica o bloco pode levar antes de ser considerado perdido.
 
@@ -104,14 +118,7 @@ class BitalinoDireto(LeitorBitalino):
             f'Abrindo porta de acesso "{endereco}" a {taxa_amostragem_hz} Hz, canais {sorted(set(canais))} ...'
         )
 
-        try:
-            porta = serial.Serial(endereco, protocolo_bitalino.BAUDRATE)
-        except (SerialException, ValueError) as erro:
-            raise ErroConexaoBitalino(
-                f'Não foi possível abrir a porta de acesso "{endereco}": {erro}. '
-                'Verifique se o BITalino está ligado e pareado, se a porta é a de saída do par '
-                'Bluetooth e se o OpenSignals está FECHADO — o dispositivo aceita um cliente por vez.'
-            ) from erro
+        porta = self._abrir_porta(endereco=endereco)
 
         self._porta = porta
         self._canais = sorted(set(canais))
@@ -119,6 +126,7 @@ class BitalinoDireto(LeitorBitalino):
         self._amostras_lidas = 0
 
         try:
+            self._devolver_ao_repouso(porta)
             self._enviar(comando_taxa)
             self._enviar(comando_inicio)
         except ErroStreamPerdido as erro:
@@ -128,6 +136,54 @@ class BitalinoDireto(LeitorBitalino):
             raise ErroConexaoBitalino(f'A porta "{endereco}" abriu, mas o BITalino não respondeu: {erro}') from erro
 
         logger.info(f'BITalino "{endereco}" adquirindo a {taxa_amostragem_hz} Hz')
+
+    def _devolver_ao_repouso(self, porta: serial.Serial) -> None:
+        """Manda parar e limpa o buffer, ANTES de configurar a aquisição.
+
+        Uma sessão anterior que morreu sem encerrar (script interrompido, aplicação fechada
+        no tacão) deixa o dispositivo adquirindo. Nesse estado ele ignora os comandos de
+        configuração e segue despejando frames do ajuste antigo — a aquisição "funciona",
+        na taxa errada, e nada denuncia.
+
+        Raises:
+            ErroStreamPerdido: Se nem o comando de parada passar.
+        """
+        self._enviar(protocolo_bitalino.COMANDO_PARAR)
+
+        pendentes = porta.in_waiting
+        if pendentes:
+            porta.read(pendentes)
+            logger.info(f'Descartados {pendentes} byte(s) de uma aquisição anterior não encerrada')
+
+        porta.reset_input_buffer()
+
+    def _abrir_porta(self, endereco: str) -> serial.Serial:
+        """Abre a porta de acesso, insistindo enquanto o link Bluetooth sobe.
+
+        Raises:
+            ErroConexaoBitalino: Se nenhuma tentativa abrir. A mensagem carrega o erro da
+                ÚLTIMA tentativa, que é o que descreve o estado atual do dispositivo.
+        """
+        ultimo_erro: Exception | None = None
+
+        for tentativa in range(1, TENTATIVAS_DE_ABERTURA + 1):
+            try:
+                return serial.Serial(endereco, protocolo_bitalino.BAUDRATE)
+            except (SerialException, OSError, ValueError) as erro:
+                ultimo_erro = erro
+                logger.info(
+                    f'Tentativa {tentativa}/{TENTATIVAS_DE_ABERTURA} de abrir "{endereco}" falhou: {erro}'
+                )
+
+                if tentativa < TENTATIVAS_DE_ABERTURA:
+                    time.sleep(PAUSA_ENTRE_TENTATIVAS_SEGUNDOS)
+
+        raise ErroConexaoBitalino(
+            f'Não foi possível abrir a porta de acesso "{endereco}" em {TENTATIVAS_DE_ABERTURA} '
+            f'tentativas: {ultimo_erro}. Verifique se o BITalino está LIGADO e ao alcance, se a porta '
+            'é a do par Bluetooth deste dispositivo, e se o OpenSignals está FECHADO — ele aceita um '
+            'cliente por vez, e o Windows leva alguns segundos para soltar o link depois que ele fecha.'
+        ) from ultimo_erro
 
     def definir_canal_ativo(self, canal: int) -> None:
         """Define qual canal é convertido para microvolts. Não toca no dispositivo."""
