@@ -1,0 +1,8 @@
+module EsquizoCap.Controles
+LabeledSlider 1.0 LabeledSlider.qml
+SetSlider 1.0 SetSlider.qml
+Dropdown 1.0 Dropdown.qml
+Segmented 1.0 Segmented.qml
+Toggle 1.0 Toggle.qml
+Accordion 1.0 Accordion.qml
+ConnectButton 1.0 ConnectButton.qml

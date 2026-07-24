@@ -1,0 +1,3 @@
+module EsquizoCap.Visualizacao
+EegTrace 1.0 EegTrace.qml
+LedStrip 1.0 LedStrip.qml

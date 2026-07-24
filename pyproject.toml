@@ -44,9 +44,9 @@ where = ["src"]
 [tool.mypy]
 python_version = "3.12"
 files = ["src/esquizocap"]
-# interface_qt/: Property/Slot do PySide6 não tem stubs amigáveis ao mypy estrito.
+# interface/: Property/Slot do PySide6 não tem stubs amigáveis ao mypy estrito.
 # _engine_legado/: arquivado, não roda. infraestrutura/: ainda não tipada (PLANO_ACAO.md).
-exclude = '(_engine_legado|interface_qt|infraestrutura)'
+exclude = '(_engine_legado|interface|infraestrutura)'
 
 # Estrito nas camadas que já foram tipadas: núcleo, bordas de hardware e orquestração.
 [[tool.mypy.overrides]]

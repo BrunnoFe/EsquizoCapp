@@ -81,12 +81,12 @@ amostras — hoje o significado delas muda conforme a taxa acordada, sem que nin
 
 | Onde | Faixa de Gamma |
 | --- | --- |
-| `interface_qt/bandas_eeg.py` (exibido ao operador) | 30–45 Hz |
+| `interface/bandas_eeg.py` (exibido ao operador) | 30–45 Hz |
 | `hardware/constantes.py` (docstring da taxa padrão) | até 45 Hz |
 | `dominio/pre_processamento.py:categorizar_frequencia` | 30–50 Hz |
 
 Quem decide a cor é o classificador do domínio (50 Hz), então é ele que a regra de Nyquist
-usa em `interface_qt/estado.py`. A tabela exibida diz outra coisa.
+usa em `interface/estado.py`. A tabela exibida diz outra coisa.
 
 Na prática pouco muda — o sensor filtra em 0,8–48 Hz por hardware, então nada acima de 48 Hz
 chega ao classificador de qualquer jeito, e as duas taxas que sobram no modo Frequência (100

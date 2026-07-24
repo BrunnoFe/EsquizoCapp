@@ -1,7 +1,7 @@
 """Ponto de entrada do EsquizoCap.
 
 Este arquivo NÃO tem lógica de interface, de aquisição ou de negócio: ele só prepara o
-ambiente e sobe a janela Qt. A janela vive em `esquizocap.interface_qt` — que é onde ela
+ambiente e sobe a janela Qt. A janela vive em `esquizocap.interface` — que é onde ela
 pode ser lida, movida e mantida junto com o resto da camada de interface.
 
 A antiga interface Tkinter está arquivada em `interface_tkinter_legado/`, na raiz do
@@ -18,7 +18,7 @@ from PySide6.QtQml import QQmlApplicationEngine
 
 from esquizocap.dominio.predicao import ErroDeModelo, carregar_modelo
 from esquizocap.infraestrutura import config, log, recursos
-from esquizocap.interface_qt.controller import EsquizoController
+from esquizocap.interface.controller import EsquizoController
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,14 @@ def main() -> int:
     controller = EsquizoController(configuracao=configuracao, modelo=modelo)
     engine.rootContext().setContextProperty('controller', controller)
 
-    qml = Path(__file__).resolve().parent / 'src' / 'esquizocap' / 'interface_qt' / 'EsquizoCapView.qml'
+    base_qml = Path(__file__).resolve().parent / 'src' / 'esquizocap' / 'interface' / 'qml'
+    # O import path DEVE ser registrado antes de qualquer engine.load: a resolução de
+    # `import EsquizoCap.<Nome>` acontece no parse do .qml e não consulta caminhos
+    # adicionados depois. Aponta para a raiz que contém a árvore EsquizoCap/, não para
+    # dentro de um módulo.
+    engine.addImportPath(str(base_qml))
+
+    qml = base_qml / 'EsquizoCap' / 'App' / 'EsquizoCapView.qml'
     engine.load(QUrl.fromLocalFile(str(qml)))
     if not engine.rootObjects():
         return -1
