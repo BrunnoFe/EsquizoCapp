@@ -540,14 +540,29 @@ ApplicationWindow {
                     badge: controller.bitalinoStatusTexto
                     body: ColumnLayout { spacing: 8; width: parent.width
                         RowLayout { Layout.fillWidth: true; spacing: 7
+                            // O rótulo mostra a resolução ("3 · 10 bits"), então não serve
+                            // de valor: a escolha vai pela posição na lista.
                             Dropdown { Layout.fillWidth: true
                                 model: controller.canaisBitalinoDisponiveis
-                                currentIndex: controller.canaisBitalinoDisponiveis.indexOf(controller.canalBitalino)
-                                onActivated: controller.canalBitalino = currentValue }
+                                currentIndex: controller.canalBitalinoIndice
+                                // Escolher um item faz o Qt escrever `currentIndex` e
+                                // DESTRUIR o binding acima. Restaurá-lo mantém o seletor
+                                // fiel ao canal ativo se algo o mudar por fora.
+                                onActivated: {
+                                    controller.definirCanalPorIndice(currentIndex)
+                                    currentIndex = Qt.binding(function() { return controller.canalBitalinoIndice })
+                                } }
                             Dropdown { Layout.fillWidth: true
                                 model: controller.macsBitalinoDisponiveis
                                 currentIndex: controller.macsBitalinoDisponiveis.indexOf(controller.macBitalino)
                                 onActivated: controller.macBitalino = currentValue } }
+
+                        Text {
+                            visible: controller.avisoDoCanal !== ""
+                            text: controller.avisoDoCanal
+                            color: "#e3a52b"; font.pixelSize: 10
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true }
 
                         // Modo de aquisição: por onde o sinal chega. Trava enquanto conectado —
                         // o dispositivo aceita um cliente por vez, e trocar com o stream aberto
@@ -580,7 +595,12 @@ ApplicationWindow {
                             model: controller.taxasSelecionaveis
                             desabilitados: controller.taxasDesabilitadas
                             currentIndex: controller.taxasSelecionaveis.indexOf(controller.taxaAmostragem)
-                            onActivated: controller.definirTaxaAmostragem(parseInt(currentValue)) }
+                            onActivated: {
+                                controller.definirTaxaAmostragem(parseInt(currentValue))
+                                currentIndex = Qt.binding(function() {
+                                    return controller.taxasSelecionaveis.indexOf(controller.taxaAmostragem)
+                                })
+                            } }
                         Text {
                             visible: controller.taxaAmostragemVisivel && controller.avisoDeTaxa !== ""
                             text: controller.avisoDeTaxa

@@ -8,14 +8,23 @@ abrir uma janela Tk e simular cliques. Agora é entrada -> saída.
 import pytest
 
 from esquizocap.dominio.ciclo_aquisicao import ModoAnalise
-from esquizocap.hardware.constantes import TAXA_AMOSTRAGEM_PADRAO_HZ, TAXAS_AMOSTRAGEM_SUPORTADAS
+from esquizocap.hardware.constantes import (
+    CANAIS_BITALINO,
+    TAXA_AMOSTRAGEM_PADRAO_HZ,
+    TAXAS_AMOSTRAGEM_SUPORTADAS,
+)
 from esquizocap.hardware.modo_aquisicao import ModoAquisicao
 from esquizocap.interface_qt.estado import (
+    CANAIS_COM_ROTULO,
+    CANAIS_NA_ORDEM_DO_SELETOR,
+    ROTULOS_DOS_CANAIS,
     EstadoApp,
     SelecaoUsuario,
     avaliar_prontidao,
     aviso_de_taxa,
+    aviso_do_canal,
     mensagem_de_aquisicao,
+    rotulo_do_canal,
     taxas_selecionaveis,
 )
 
@@ -265,6 +274,74 @@ class TestTaxaNaProntidao:
             ),
             macs_validos=MACS,
         )
+
+        assert estado is EstadoApp.PRONTO
+
+
+class TestRotuloDoCanal:
+    """Os seis canais NÃO são equivalentes, e a interface os apresentava como se fossem.
+
+    A1–A4 têm 10 bits (1024 níveis); A5 e A6, apenas 6 (64 níveis). Para um sinal de
+    microvolts, 64 níveis são quase todos degrau de quantização — e a FFT de um sinal assim
+    espalha energia por todo o espectro, tornando a banda dominante um sorteio.
+
+    Isto vale nos DOIS modos de aquisição: é uma armadilha que já existia, não algo que o
+    Modo Direto trouxe.
+    """
+
+    @pytest.mark.parametrize('canal', [1, 2, 3, 4])
+    def test_os_canais_de_dez_bits_dizem_a_resolucao(self, canal: int) -> None:
+        rotulo = rotulo_do_canal(canal)
+
+        assert rotulo.startswith(str(canal))
+        assert '10 bits' in rotulo
+
+    @pytest.mark.parametrize('canal', [5, 6])
+    def test_os_canais_de_seis_bits_saem_marcados(self, canal: int) -> None:
+        rotulo = rotulo_do_canal(canal)
+
+        assert '6 bits' in rotulo
+        assert 'evite' in rotulo.lower()
+
+    def test_todo_canal_do_dispositivo_tem_rotulo(self) -> None:
+        assert len(ROTULOS_DOS_CANAIS) == len(CANAIS_BITALINO)
+
+    def test_rotulos_e_canais_saem_da_mesma_fonte(self) -> None:
+        """A interface escolhe o canal pela POSIÇÃO, porque o rótulo não serve de valor.
+
+        Se a lista de rótulos e a de canais pudessem divergir, um filtro ou reordenação num
+        dos lados deslocaria tudo — e o operador escolheria o canal 3 adquirindo o 4, sem
+        erro nenhum. Por isso as duas derivam de `CANAIS_COM_ROTULO`, e este teste prova que
+        continuam alinhadas.
+        """
+        assert len(ROTULOS_DOS_CANAIS) == len(CANAIS_NA_ORDEM_DO_SELETOR)
+
+        for posicao, (canal, rotulo) in enumerate(CANAIS_COM_ROTULO):
+            assert CANAIS_NA_ORDEM_DO_SELETOR[posicao] == canal
+            assert ROTULOS_DOS_CANAIS[posicao] == rotulo
+            assert rotulo.startswith(str(canal))
+
+    def test_o_rotulo_comeca_pelo_numero_do_canal(self) -> None:
+        """A barra de status mostra "Canal 3": o dropdown tem que combinar com ela."""
+        for canal, rotulo in zip(CANAIS_BITALINO, ROTULOS_DOS_CANAIS, strict=True):
+            assert rotulo.startswith(str(canal))
+
+
+class TestAvisoDoCanal:
+    @pytest.mark.parametrize('canal', [5, 6])
+    def test_escolher_um_canal_de_baixa_resolucao_avisa(self, canal: int) -> None:
+        aviso = aviso_do_canal(canal)
+
+        assert 'bits' in aviso
+        assert aviso != ''
+
+    @pytest.mark.parametrize('canal', [1, 2, 3, 4])
+    def test_os_canais_de_dez_bits_nao_avisam_nada(self, canal: int) -> None:
+        assert aviso_do_canal(canal) == ''
+
+    def test_canal_de_baixa_resolucao_continua_pronto_para_adquirir(self) -> None:
+        """O eletrodo é físico: se já está plugado no A5, negar a leitura é pior que avisar."""
+        estado, _mensagem = avaliar_prontidao(selecao=selecao(canal_bitalino='5'), macs_validos=MACS)
 
         assert estado is EstadoApp.PRONTO
 

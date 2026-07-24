@@ -21,7 +21,9 @@ from esquizocap.dominio.pre_processamento import FREQUENCIA_CORTE_SUPERIOR_HZ
 from esquizocap.hardware.constantes import (
     CANAIS_BITALINO,
     MODOS_LUMINOSIDADE,
+    RESOLUCAO_CANAIS_PRINCIPAIS,
     TAXAS_AMOSTRAGEM_SUPORTADAS,
+    resolucao_bits,
 )
 from esquizocap.hardware.modo_aquisicao import modo_do_rotulo
 
@@ -45,6 +47,63 @@ arquivado); movida para cá porque é a única consumidora restante.
 # O combobox entrega o canal como texto; a constante do hardware é `int`. A conversão
 # fica aqui, num lugar só, em vez de espalhar `str()` pela regra.
 CANAIS_VALIDOS: frozenset[str] = frozenset(str(canal) for canal in CANAIS_BITALINO)
+
+
+def rotulo_do_canal(canal: int) -> str:
+    """Como o canal aparece no seletor: número e resolução do conversor.
+
+    Os seis canais não são equivalentes, e a interface os apresentava como se fossem.
+    A1–A4 têm 10 bits (1024 níveis); A5 e A6, apenas 6 (64 níveis). Num sinal de microvolts,
+    64 níveis são quase todos degrau de quantização.
+
+    Os canais de baixa resolução seguem selecionáveis — o eletrodo é físico, e quem já
+    plugou no A5 precisa poder ler dali. O precedente do projeto para RESTRINGIR opções (só
+    um baudrate é oferecido) não se aplica: lá a opção extra quebrava a comunicação, aqui
+    ela só produz um sinal ruim, e quem monta a instalação pode ter suas razões.
+    """
+    bits = resolucao_bits(canal=canal)
+
+    if bits < RESOLUCAO_CANAIS_PRINCIPAIS:
+        return f'{canal} · {bits} bits (evite para EEG)'
+
+    return f'{canal} · {bits} bits'
+
+
+CANAIS_COM_ROTULO: tuple[tuple[int, str], ...] = tuple(
+    (canal, rotulo_do_canal(canal)) for canal in CANAIS_BITALINO
+)
+"""Pares `(canal, rótulo)` na ordem do seletor.
+
+FONTE ÚNICA da correspondência entre posição e canal. O rótulo mostra a resolução, então
+não serve de valor, e a escolha na interface vai pela POSIÇÃO — se a lista de rótulos e a
+de canais viessem de lugares diferentes, filtrar ou reordenar um lado deslocaria tudo sem
+erro nenhum, e o operador escolheria o canal 3 adquirindo o 4.
+"""
+
+ROTULOS_DOS_CANAIS: tuple[str, ...] = tuple(rotulo for _canal, rotulo in CANAIS_COM_ROTULO)
+"""Só os rótulos, para alimentar o seletor."""
+
+CANAIS_NA_ORDEM_DO_SELETOR: tuple[int, ...] = tuple(canal for canal, _rotulo in CANAIS_COM_ROTULO)
+"""Só os canais, na mesma ordem — é o que traduz posição escolhida em canal."""
+
+
+def aviso_do_canal(canal: int) -> str:
+    """O custo de usar este canal para EEG, quando há um. Vazio quando não há.
+
+    Existe além do rótulo porque o rótulo some assim que o dropdown fecha, e a escolha
+    permanece — o aviso fica visível enquanto o canal estiver selecionado.
+    """
+    bits = resolucao_bits(canal=canal)
+
+    if bits >= RESOLUCAO_CANAIS_PRINCIPAIS:
+        return ''
+
+    niveis = 2**bits
+    return (
+        f'O canal {canal} tem {bits} bits ({niveis} níveis) contra {2**RESOLUCAO_CANAIS_PRINCIPAIS} '
+        'dos canais 1 a 4. Para EEG, boa parte do sinal vira degrau de quantização e a banda '
+        'dominante fica instável.'
+    )
 
 
 def taxa_minima_para_analise_espectral() -> int:

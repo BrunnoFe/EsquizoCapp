@@ -28,6 +28,36 @@ oficial (BITalinoWorld/revolution-python-api), ambas GPL v3, como este projeto.
 
 from dataclasses import dataclass
 
+from esquizocap.hardware.constantes import (
+    CANAIS_BITALINO,
+    RESOLUCAO_CANAIS_AUXILIARES,
+    RESOLUCAO_CANAIS_PRINCIPAIS,
+    ULTIMO_CANAL_PRINCIPAL,
+    resolucao_bits,
+    validar_canal,
+)
+
+__all__ = [
+    'ADU_MAXIMO_CANAIS_AUXILIARES',
+    'ADU_MAXIMO_CANAIS_PRINCIPAIS',
+    'BAUDRATE',
+    'CODIGOS_DE_TAXA',
+    'COMANDO_PARAR',
+    'DESLOCAMENTOS_DIGITAIS',
+    'LeituraBruta',
+    'comando_definir_taxa',
+    'comando_iniciar',
+    'converter_para_microvolts',
+    'crc_confere',
+    'decodificar_frame',
+    'montar_linha',
+    'resolucao_bits',
+    'tamanho_frame_bytes',
+    'validar_canal',
+]
+"""`resolucao_bits` e `validar_canal` são reexportados de `constantes`: são fatos do
+DISPOSITIVO, não do protocolo, mas quem decodifica um frame precisa deles à mão."""
+
 BAUDRATE: int = 115200
 """Velocidade da porta de acesso. Fixa no firmware, não negociável."""
 
@@ -36,18 +66,6 @@ CODIGOS_DE_TAXA: dict[int, int] = {1: 0b00, 10: 0b01, 100: 0b10, 1000: 0b11}
 
 COMANDO_PARAR: int = 0
 """Devolve o dispositivo ao repouso, encerrando a aquisição."""
-
-CANAL_MINIMO: int = 1
-CANAL_MAXIMO: int = 6
-
-RESOLUCAO_CANAIS_PRINCIPAIS: int = 10
-"""Bits do conversor A/D em A1..A4: 1024 níveis."""
-
-RESOLUCAO_CANAIS_AUXILIARES: int = 6
-"""Bits do conversor A/D em A5..A6: apenas 64 níveis, dezesseis vezes mais grosso."""
-
-ULTIMO_CANAL_PRINCIPAL: int = 4
-"""A1..A4 são de 10 bits; A5 e A6, de 6. É capacidade do hardware, não configuração."""
 
 ADU_MAXIMO_CANAIS_PRINCIPAIS: int = 2**RESOLUCAO_CANAIS_PRINCIPAIS - 1
 ADU_MAXIMO_CANAIS_AUXILIARES: int = 2**RESOLUCAO_CANAIS_AUXILIARES - 1
@@ -120,11 +138,11 @@ def comando_iniciar(canais: list[int]) -> int:
     if not canais_unicos:
         raise ValueError('Nenhum canal informado: a aquisição precisa de ao menos um canal.')
 
-    fora_da_faixa = [canal for canal in canais_unicos if not CANAL_MINIMO <= canal <= CANAL_MAXIMO]
+    fora_da_faixa = [canal for canal in canais_unicos if canal not in CANAIS_BITALINO]
     if fora_da_faixa:
         raise ValueError(
             f'Canal inexistente no BITalino: {fora_da_faixa}. '
-            f'Os canais válidos vão de {CANAL_MINIMO} a {CANAL_MAXIMO}.'
+            f'Os canais válidos são {list(CANAIS_BITALINO)}.'
         )
 
     comando = 0b1
@@ -261,36 +279,6 @@ def montar_linha(leitura: LeituraBruta, canais: list[int], canal_ativo: int) -> 
             linha.append(float(adu))
 
     return linha
-
-
-def validar_canal(canal: int) -> None:
-    """Confere que o canal existe no dispositivo, sem devolver nada.
-
-    Existe como função própria porque três implementações precisam validar sem querer a
-    resolução. Antes elas chamavam `resolucao_bits` e descartavam o retorno — uma consulta
-    disfarçada de validação, que só se explicava por comentário.
-
-    Raises:
-        ValueError: Se o canal estiver fora de 1 a 6.
-    """
-    if not CANAL_MINIMO <= canal <= CANAL_MAXIMO:
-        raise ValueError(
-            f'Canal inexistente no BITalino: {canal}. '
-            f'Os canais válidos vão de {CANAL_MINIMO} a {CANAL_MAXIMO}.'
-        )
-
-
-def resolucao_bits(canal: int) -> int:
-    """Quantos bits o conversor A/D usa nesse canal.
-
-    Raises:
-        ValueError: Se o canal estiver fora de 1 a 6.
-    """
-    validar_canal(canal=canal)
-
-    return (
-        RESOLUCAO_CANAIS_PRINCIPAIS if canal <= ULTIMO_CANAL_PRINCIPAL else RESOLUCAO_CANAIS_AUXILIARES
-    )
 
 
 def converter_para_microvolts(adu: int, canal: int) -> float:

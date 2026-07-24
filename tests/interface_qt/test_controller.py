@@ -90,6 +90,71 @@ class TestCanalAtivoChegaAoLeitor:
         assert controlador.canalBitalino == 'Selecione o canal ativo do Bitalino'
 
 
+class TestSeletorDeCanal:
+    """O rótulo mostra a resolução ("3 · 10 bits"), então não serve de valor.
+
+    A escolha vai pela POSIÇÃO na lista, e é aí que um erro passaria despercebido: um
+    deslocamento de um faria o operador escolher o canal 3 e adquirir o 4, sem erro nenhum.
+    """
+
+    def test_o_seletor_mostra_a_resolucao_de_cada_canal(self, controlador: EsquizoController) -> None:
+        rotulos = controlador.canaisBitalinoDisponiveis
+
+        assert len(rotulos) == 6
+        assert '10 bits' in rotulos[0]
+        assert '6 bits' in rotulos[4], 'o canal 5 tem 6 bits'
+        assert 'evite' in rotulos[5].lower(), 'o canal 6 precisa do aviso'
+
+    def test_escolher_pela_posicao_seleciona_o_canal_certo(
+        self, controlador: EsquizoController
+    ) -> None:
+        controlador.definirCanalPorIndice(2)
+
+        assert controlador.canalBitalino == '3', 'a posição 2 é o canal 3'
+        assert controlador.canalBitalinoIndice == 2
+
+    def test_a_posicao_e_o_canal_fecham_o_ciclo(self, controlador: EsquizoController) -> None:
+        """Ida e volta: escolher por posição e ler a posição de volta tem que bater, senão o
+        dropdown mostra um canal e a aquisição usa outro."""
+        for posicao in range(6):
+            controlador.definirCanalPorIndice(posicao)
+
+            assert controlador.canalBitalinoIndice == posicao
+
+    def test_posicao_fora_da_lista_e_ignorada(self, controlador: EsquizoController) -> None:
+        controlador.definirCanalPorIndice(2)
+
+        controlador.definirCanalPorIndice(99)
+
+        assert controlador.canalBitalino == '3', 'a escolha anterior permanece'
+
+    def test_escolher_um_canal_de_baixa_resolucao_avisa_mas_deixa(
+        self, controlador: EsquizoController
+    ) -> None:
+        """O eletrodo é físico: negar a leitura de quem plugou no A5 é pior que avisar."""
+        controlador.definirCanalPorIndice(4)
+
+        assert controlador.canalBitalino == '5'
+        assert 'bits' in controlador.avisoDoCanal
+
+    def test_canal_de_dez_bits_nao_avisa_nada(self, controlador: EsquizoController) -> None:
+        controlador.definirCanalPorIndice(0)
+
+        assert controlador.avisoDoCanal == ''
+
+    def test_trocar_o_canal_pela_posicao_avisa_os_leitores(
+        self, controlador: EsquizoController
+    ) -> None:
+        """O caminho da GUI é `definirCanalPorIndice`; ele precisa propagar como o setter."""
+        espioes = {modo: LeitorEspiao(modo.name) for modo in ModoAquisicao}
+        controlador._leitores_por_modo = espioes  # type: ignore[assignment]
+
+        controlador.definirCanalPorIndice(3)
+
+        for espiao in espioes.values():
+            assert espiao.canais_ativos_recebidos == [4]
+
+
 class TestSeletorDeModo:
     def test_com_bitalino_simulado_o_seletor_fica_travado(self, controlador: EsquizoController) -> None:
         """Com o fake, o mesmo leitor responde pelos dois modos: a escolha não teria efeito,

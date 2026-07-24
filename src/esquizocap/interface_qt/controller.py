@@ -60,13 +60,16 @@ from esquizocap.interface_qt.constantes_gui import (
 )
 from esquizocap.interface_qt.cores_visuais import hsv_para_qcolor, limitar, qcolor_para_hex
 from esquizocap.interface_qt.estado import (
+    CANAIS_NA_ORDEM_DO_SELETOR,
     CANAIS_VALIDOS,
     MODELOS_DISPONIVEIS,
+    ROTULOS_DOS_CANAIS,
     TEXTO_PORTA_NAO_ENCONTRADA,
     EstadoApp,
     SelecaoUsuario,
     avaliar_prontidao,
     aviso_de_taxa,
+    aviso_do_canal,
     mensagem_de_aquisicao,
     taxas_selecionaveis,
 )
@@ -179,14 +182,16 @@ class EsquizoController(QObject):
         # abertura da app não aparecem sem reiniciar (limitação aceita, não é regressão:
         # o Tkinter também nunca detectou hotplug).
         self._portas_seriais_disponiveis: list[str] = self._arduino.listar_portas()
-        self._canais_bitalino_disponiveis: list[str] = [str(canal) for canal in constantes.CANAIS_BITALINO]
+        # Rótulos, e não números: os seis canais não são equivalentes, e o seletor precisa
+        # dizer isso. O valor guardado segue sendo o número — ver `canalBitalinoIndice`.
+        self._canais_bitalino_disponiveis: list[str] = list(ROTULOS_DOS_CANAIS)
         self._macs_bitalino_disponiveis: list[str] = list(configuracao.macs_bitalino)
         self._modos_aquisicao_disponiveis: list[str] = list(MODOS_AQUISICAO)
         self._baud_rates_disponiveis: list[str] = [str(baud) for baud in constantes.BAUDRATES_SUPORTADOS]
 
         self._selecao = criar_configuracao_inicial(
             porta_arduino_inicial=self._portas_seriais_disponiveis[0] if self._portas_seriais_disponiveis else "",
-            canal_bitalino_inicial=self._canais_bitalino_disponiveis[0],
+            canal_bitalino_inicial=str(constantes.CANAIS_BITALINO[0]),
             mac_bitalino_inicial=self._macs_bitalino_disponiveis[0],
         )
         self._aparencia = AparenciaVisual()
@@ -809,6 +814,41 @@ class EsquizoController(QObject):
         self.estadoMudou.emit()
 
     canalBitalino = Property(str, _obter_canal_bitalino, _definir_canal_bitalino, notify=estadoMudou)
+
+    def _canal_ativo(self) -> int | None:
+        """O canal ativo como número, ou `None` se nada válido estiver escolhido.
+
+        A interface guarda o canal como TEXTO, e o texto pode ser o placeholder de "nada
+        escolhido" — daí o opcional em vez de um `int()` solto em cada uso.
+        """
+        try:
+            return int(self._selecao.canal_bitalino)
+        except ValueError:
+            return None
+
+    def _indice_do_canal_ativo(self) -> int:
+        """Posição do canal ativo no seletor. O rótulo mostra "3 · 10 bits", mas o valor
+        guardado é o número puro — a posição é a ponte entre os dois."""
+        canal = self._canal_ativo()
+
+        if canal is None or canal not in CANAIS_NA_ORDEM_DO_SELETOR:
+            return -1
+
+        return CANAIS_NA_ORDEM_DO_SELETOR.index(canal)
+
+    @Slot(int)
+    def definirCanalPorIndice(self, indice: int) -> None:
+        """Escolhe o canal pela POSIÇÃO no seletor, já que o rótulo não é o valor."""
+        if 0 <= indice < len(CANAIS_NA_ORDEM_DO_SELETOR):
+            self.canalBitalino = str(CANAIS_NA_ORDEM_DO_SELETOR[indice])
+
+    canalBitalinoIndice = Property(int, _indice_do_canal_ativo, notify=estadoMudou)
+
+    def _aviso_do_canal_ativo(self) -> str:
+        canal = self._canal_ativo()
+        return aviso_do_canal(canal) if canal in CANAIS_NA_ORDEM_DO_SELETOR else ""
+
+    avisoDoCanal = Property(str, _aviso_do_canal_ativo, notify=estadoMudou)
     macBitalino = Property(str, *_propriedade_editavel(_obter_selecao, "mac_bitalino", str), notify=estadoMudou)
 
     def _em_modo_amplitude(self) -> bool:
