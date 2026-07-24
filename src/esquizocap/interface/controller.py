@@ -38,9 +38,9 @@ import math
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from PySide6.QtCore import Property, QObject, QTimer, QUrl, Signal, Slot
+from PySide6.QtCore import Property, QObject, QTimer, QUrl, Signal, SignalInstance, Slot
 from PySide6.QtGui import QColor
 
 from esquizocap import hardware
@@ -161,7 +161,57 @@ class _Sinais:
     quadroMudou = Signal()
 
 
-class _PropriedadesConfiguracao:
+class _NucleoControlador:
+    """Base **só-para-tipos** herdada pelos mixins de `Property`.
+
+    Os métodos dos mixins acessam estado e helpers que só existem no `EsquizoController`
+    concreto (`self._selecao`, `self._reavaliar_prontidao()`, ...). Em runtime a MRO resolve
+    tudo, mas um verificador estático que olha o mixin isolado não sabe disso e acusa
+    "atributo desconhecido". Este bloco `TYPE_CHECKING` **declara** essa superfície — sem
+    implementar nada — para o pyright/Pylance resolver `self.*` (e dar autocomplete). No
+    runtime a classe é vazia: o bloco é ignorado, então nada aqui sobrescreve o que o
+    controller concreto (ou `_Sinais`) provê.
+
+    NÃO herda `_Sinais`: os `Signal`s reais chegam ao `EsquizoController` por ele listar
+    `_Sinais` diretamente. Duplicar `_Sinais` aqui e lá quebraria a MRO (C3). Os sinais
+    aparecem abaixo apenas como `SignalInstance` — o tipo que a instância enxerga —, o que
+    faz `self.estadoMudou.emit()` resolver mesmo num mixin que não é `QObject`.
+    """
+
+    if TYPE_CHECKING:
+        estadoMudou: SignalInstance
+        quadroMudou: SignalInstance
+        # Atributos criados no `EsquizoController.__init__`.
+        _selecao: ConfiguracaoSelecionada
+        _aparencia: AparenciaVisual
+        _ao_vivo: LeituraAoVivo
+        _conexoes: EstadoConexoesHardware
+        _estado_app: EstadoApp
+        _mensagem_status: str
+        _simulador_leds: SimuladorFitaLed
+        _leitores_por_modo: dict[ModoAquisicao, LeitorBitalino]
+        _portas_seriais_disponiveis: list[str]
+        _baud_rates_disponiveis: list[str]
+        _canais_bitalino_disponiveis: list[str]
+        _macs_bitalino_disponiveis: list[str]
+        _modos_aquisicao_disponiveis: list[str]
+
+        # Helpers do núcleo (e o cross-mixin `_em_modo_amplitude`) que os mixins chamam
+        # via `self`; a implementação real vive no controller concreto ou no mixin de config.
+        @staticmethod
+        def _agora_ms() -> float: ...
+        @staticmethod
+        def _rotulo_de_conexao(conectado: bool) -> str: ...
+        def _reavaliar_prontidao(self) -> None: ...
+        def _porta_derivada_do_bitalino(self) -> str: ...
+        def _modo_aquisicao_escolhido(self) -> ModoAquisicao: ...
+        def _leitor_do_modo_escolhido(self) -> LeitorBitalino: ...
+        def _seletor_de_modo_habilitado(self) -> bool: ...
+        def _aviso_do_modo_aquisicao(self) -> str: ...
+        def _em_modo_amplitude(self) -> bool: ...
+
+
+class _PropriedadesConfiguracao(_NucleoControlador):
     """Properties de configuração, estado da app e setup de hardware (`notify=estadoMudou`).
 
     Taxa/canal/modo de aquisição, portas, e os controles de sinal/protocolo. Os métodos
@@ -408,7 +458,7 @@ class _PropriedadesConfiguracao:
     leituraControleAmostragem = Property(str, _leitura_do_controle_de_amostragem, notify=_Sinais.estadoMudou)
 
 
-class _PropriedadesQuadroAoVivo:
+class _PropriedadesQuadroAoVivo(_NucleoControlador):
     """Properties que variam A CADA QUADRO durante a aquisição (`notify=quadroMudou`).
 
     Cor viva, órbita/banda, cores dos LEDs e pulsação — o que a peça mostra em movimento.
@@ -515,7 +565,7 @@ class _PropriedadesQuadroAoVivo:
     pulsacao = Property(float, _pulsacao, notify=_Sinais.quadroMudou)
 
 
-class _PropriedadesAparenciaVisual:
+class _PropriedadesAparenciaVisual(_NucleoControlador):
     """As ~16 properties de animação & feel, puramente visuais e editáveis (`notify=estadoMudou`).
 
     Bloco mecânico: cada uma é um `_propriedade_editavel` sobre um campo de `AparenciaVisual`,
