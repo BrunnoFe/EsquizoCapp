@@ -8,13 +8,22 @@ o travamento do seletor de modo.
 Tudo aqui roda com `ESQUIZOCAP_FAKE=tudo`: nenhum teste toca hardware.
 """
 
+from collections.abc import Callable
+from pathlib import Path
+
 import pytest
 from PySide6.QtCore import QCoreApplication
 
 from esquizocap.dominio.ciclo_aquisicao import ModoAnalise
 from esquizocap.hardware import fabrica
+from esquizocap.hardware.arduino_fake import ArduinoFake
+from esquizocap.hardware.arduino_real import ArduinoSerial
+from esquizocap.hardware.bitalino_fake import BitalinoSintetico
+from esquizocap.hardware.bitalino_real import BitalinoLSL
 from esquizocap.hardware.modo_aquisicao import ModoAquisicao
+from esquizocap.infraestrutura import preferencias
 from esquizocap.infraestrutura.config import Configuracao
+from esquizocap.infraestrutura.preferencias import Preferencias
 from esquizocap.interface.controller import EsquizoController
 from esquizocap.interface.estado import EstadoApp
 
@@ -47,10 +56,52 @@ def aplicacao_qt() -> QCoreApplication:
 
 
 @pytest.fixture
-def controlador(aplicacao_qt: QCoreApplication, monkeypatch: pytest.MonkeyPatch, modelo: object) -> EsquizoController:
+def caminho_preferencias(tmp_path: Path) -> Path:
+    """Preferências sempre em `tmp_path`: o controller grava ao encerrar, e o default
+    apontaria para `settings/preferencias.json` dentro do repositório."""
+    return tmp_path / 'preferencias.json'
+
+
+@pytest.fixture
+def controlador(
+    aplicacao_qt: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    modelo: object,
+    caminho_preferencias: Path,
+) -> EsquizoController:
     monkeypatch.setenv(fabrica.NOME_VARIAVEL_FAKE, 'tudo')
     configuracao = Configuracao(macs_bitalino=(MAC,))
-    return EsquizoController(configuracao=configuracao, modelo=modelo)  # type: ignore[arg-type]
+    return EsquizoController(  # type: ignore[arg-type]
+        configuracao=configuracao,
+        modelo=modelo,
+        caminho_preferencias=caminho_preferencias,
+    )
+
+
+@pytest.fixture
+def controlador_sem_variavel(
+    aplicacao_qt: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    modelo: object,
+    caminho_preferencias: Path,
+) -> Callable[[Preferencias], EsquizoController]:
+    """Constrói o controller SEM `ESQUIZOCAP_FAKE`, para exercitar o menu de simulação.
+
+    Com a variável definida ela vence a preferência e os controles ficam travados — que é
+    o comportamento certo, mas impede testar a troca em si.
+    """
+    monkeypatch.delenv(fabrica.NOME_VARIAVEL_FAKE, raising=False)
+    configuracao = Configuracao(macs_bitalino=(MAC,))
+
+    def construir(preferencias_usuario: Preferencias) -> EsquizoController:
+        return EsquizoController(  # type: ignore[arg-type]
+            configuracao=configuracao,
+            modelo=modelo,
+            preferencias_usuario=preferencias_usuario,
+            caminho_preferencias=caminho_preferencias,
+        )
+
+    return construir
 
 
 class TestCanalAtivoChegaAoLeitor:
@@ -345,3 +396,216 @@ class TestEncerramento:
 
     def test_o_estado_inicial_pede_configuracao(self, controlador: EsquizoController) -> None:
         assert controlador._estado_app is EstadoApp.CONFIGURANDO
+
+
+ConstrutorDeControlador = Callable[[Preferencias], EsquizoController]
+
+
+class TestModoSimulacaoPelaInterface:
+    """Trocar entre hardware real e simulado sem reiniciar o processo.
+
+    É a única operação da app que substitui os objetos de borda em pleno voo. Errar aqui
+    não levanta exceção: sobra um leitor órfão segurando a porta, ou os leitores novos
+    convertem um canal diferente do que a tela mostra.
+    """
+
+    def test_a_preferencia_decide_o_hardware_do_arranque(
+        self, controlador_sem_variavel: ConstrutorDeControlador
+    ) -> None:
+        controlador = controlador_sem_variavel(Preferencias(componentes_simulados=frozenset({'arduino'})))
+
+        assert isinstance(controlador._arduino, ArduinoFake)
+        assert controlador.arduinoSimulado is True
+        assert controlador.bitalinoSimulado is False
+
+    def test_sem_preferencia_o_hardware_e_real(self, controlador_sem_variavel: ConstrutorDeControlador) -> None:
+        """O default TEM que ser real: simular por acidente é o pior cenário."""
+        controlador = controlador_sem_variavel(Preferencias())
+
+        assert isinstance(controlador._arduino, ArduinoSerial)
+        assert controlador.emModoSimulacao is False
+
+    def test_ligar_a_simulacao_troca_os_objetos_na_hora(
+        self, controlador_sem_variavel: ConstrutorDeControlador
+    ) -> None:
+        controlador = controlador_sem_variavel(Preferencias())
+        arduino_antes = controlador._arduino
+
+        controlador.definirSimulacao('arduino', True)
+
+        assert controlador._arduino is not arduino_antes
+        assert isinstance(controlador._arduino, ArduinoFake)
+        assert controlador.arduinoSimulado is True
+
+    def test_desligar_a_simulacao_volta_ao_hardware_real(
+        self, controlador_sem_variavel: ConstrutorDeControlador
+    ) -> None:
+        """O caminho de volta é o que hoje exige reiniciar o processo."""
+        controlador = controlador_sem_variavel(Preferencias(componentes_simulados=frozenset({'bitalino'})))
+
+        controlador.definirSimulacao('bitalino', False)
+
+        assert controlador.bitalinoSimulado is False
+        assert isinstance(controlador._leitores_por_modo[ModoAquisicao.OPENSIGNALS], BitalinoLSL)
+
+    def test_desligar_a_simulacao_reabilita_o_seletor_de_modo(
+        self, controlador_sem_variavel: ConstrutorDeControlador
+    ) -> None:
+        """Sob fake o seletor fica travado porque um leitor só responde pelos dois modos.
+        Essa trava era decisão de arranque e agora precisa acompanhar a troca."""
+        controlador = controlador_sem_variavel(Preferencias(componentes_simulados=frozenset({'bitalino'})))
+        assert controlador.seletorDeModoHabilitado is False
+
+        controlador.definirSimulacao('bitalino', False)
+
+        assert controlador.seletorDeModoHabilitado is True
+
+    def test_ligar_a_simulacao_do_bitalino_trava_o_seletor_de_modo(
+        self, controlador_sem_variavel: ConstrutorDeControlador
+    ) -> None:
+        controlador = controlador_sem_variavel(Preferencias())
+
+        controlador.definirSimulacao('bitalino', True)
+
+        assert isinstance(controlador._leitores_por_modo[ModoAquisicao.DIRETO], BitalinoSintetico)
+        assert controlador.seletorDeModoHabilitado is False
+
+    def test_a_reconstrucao_fecha_os_leitores_antigos(self, controlador_sem_variavel: ConstrutorDeControlador) -> None:
+        """Um leitor não encerrado seguraria porta serial ou socket até o processo morrer,
+        e a próxima conexão falharia sem motivo aparente."""
+        controlador = controlador_sem_variavel(Preferencias())
+        espioes = {modo: LeitorEspiao(modo.name) for modo in ModoAquisicao}
+        controlador._leitores_por_modo = espioes  # type: ignore[assignment]
+
+        controlador.definirSimulacao('bitalino', True)
+
+        for espiao in espioes.values():
+            assert espiao.encerramentos >= 1
+
+    def test_o_canal_ativo_e_reaplicado_nos_leitores_novos(
+        self, controlador_sem_variavel: ConstrutorDeControlador
+    ) -> None:
+        """A falha silenciosa desta feature: os leitores novos nascem no canal 1 enquanto a
+        tela mostra outro. Números plausíveis, cor errada, nenhum erro."""
+        controlador = controlador_sem_variavel(Preferencias())
+        controlador.canalBitalino = '5'
+
+        controlador.definirSimulacao('bitalino', True)
+        espioes = {modo: LeitorEspiao(modo.name) for modo in ModoAquisicao}
+        controlador._leitores_por_modo = espioes  # type: ignore[assignment]
+        controlador._reaplicar_canal_ativo_nos_leitores()
+
+        assert controlador.canalBitalino == '5'
+        for espiao in espioes.values():
+            assert espiao.canais_ativos_recebidos == [5]
+
+    def test_a_reconstrucao_marca_tudo_como_desconectado(
+        self, controlador_sem_variavel: ConstrutorDeControlador
+    ) -> None:
+        """Os objetos novos nunca conectaram; herdar o estado anterior mostraria um ponto
+        verde ao lado de um dispositivo que não está aberto."""
+        controlador = controlador_sem_variavel(Preferencias())
+
+        controlador.definirSimulacao('arduino', True)
+
+        assert controlador._conexoes.arduino_conectado is False
+        assert controlador._conexoes.bitalino_conectado is False
+
+    def test_componente_desconhecido_e_ignorado(self, controlador_sem_variavel: ConstrutorDeControlador) -> None:
+        controlador = controlador_sem_variavel(Preferencias())
+        arduino_antes = controlador._arduino
+
+        controlador.definirSimulacao('godot', True)
+
+        assert controlador._arduino is arduino_antes
+
+
+class TestTravaDaSimulacao:
+    """A troca só pode acontecer com tudo desconectado e parado."""
+
+    def test_travada_com_o_bitalino_conectado(self, controlador_sem_variavel: ConstrutorDeControlador) -> None:
+        controlador = controlador_sem_variavel(Preferencias())
+        controlador._conexoes.bitalino_conectado = True
+
+        assert controlador.podeAlterarSimulacao is False
+        assert 'Desconecte' in controlador.motivoSimulacaoTravada
+
+    def test_travada_com_o_arduino_conectado(self, controlador_sem_variavel: ConstrutorDeControlador) -> None:
+        controlador = controlador_sem_variavel(Preferencias())
+        controlador._conexoes.arduino_conectado = True
+
+        assert controlador.podeAlterarSimulacao is False
+
+    def test_travada_durante_a_aquisicao(self, controlador_sem_variavel: ConstrutorDeControlador) -> None:
+        controlador = controlador_sem_variavel(Preferencias())
+        controlador._estado_app = EstadoApp.ADQUIRINDO
+
+        assert controlador.podeAlterarSimulacao is False
+        assert 'Pare a aquisição' in controlador.motivoSimulacaoTravada
+
+    def test_a_troca_recusada_nao_mexe_no_hardware(self, controlador_sem_variavel: ConstrutorDeControlador) -> None:
+        controlador = controlador_sem_variavel(Preferencias())
+        controlador._conexoes.bitalino_conectado = True
+        arduino_antes = controlador._arduino
+
+        controlador.definirSimulacao('arduino', True)
+
+        assert controlador._arduino is arduino_antes
+        assert controlador.erroTexto != '', 'a recusa precisa aparecer na tela, não só no log'
+
+    def test_a_variavel_de_ambiente_trava_os_controles(self, controlador: EsquizoController) -> None:
+        """`controlador` roda com ESQUIZOCAP_FAKE=tudo: o ambiente vence, e o menu tem que
+        dizer isso em vez de oferecer um botão que não faz nada."""
+        assert controlador.podeAlterarSimulacao is False
+        assert fabrica.NOME_VARIAVEL_FAKE in controlador.motivoSimulacaoTravada
+        assert controlador.emModoSimulacao is True
+
+
+class TestPersistenciaDasPreferencias:
+    def test_a_aparencia_salva_volta_no_proximo_arranque(
+        self, controlador_sem_variavel: ConstrutorDeControlador
+    ) -> None:
+        controlador = controlador_sem_variavel(Preferencias(aparencia={'quantidade_leds': 90.0}))
+
+        assert controlador.quantidadeLeds == 90
+
+    def test_valor_fora_da_faixa_e_limitado_ao_aplicar(self, controlador_sem_variavel: ConstrutorDeControlador) -> None:
+        """A infraestrutura não conhece as faixas; o clamp é responsabilidade daqui."""
+        controlador = controlador_sem_variavel(Preferencias(aparencia={'quantidade_leds': 99999.0}))
+
+        assert controlador.quantidadeLeds == 120
+
+    def test_slider_desconhecido_nao_derruba_o_arranque(
+        self, controlador_sem_variavel: ConstrutorDeControlador
+    ) -> None:
+        """Uma preferência de uma versão anterior não pode impedir a instalação de subir."""
+        controlador = controlador_sem_variavel(Preferencias(aparencia={'slider_que_nao_existe_mais': 1.0}))
+
+        assert controlador.quantidadeLeds == 60
+
+    def test_encerrar_grava_a_aparencia_em_disco(
+        self, controlador_sem_variavel: ConstrutorDeControlador, caminho_preferencias: Path
+    ) -> None:
+        """O debounce ainda estaria contando quando a janela fecha."""
+        controlador = controlador_sem_variavel(Preferencias())
+        controlador.quantidadeLeds = 42
+
+        controlador.encerrarTudo()
+
+        assert preferencias.carregar(caminho_preferencias).aparencia['quantidade_leds'] == 42
+
+    def test_a_escolha_de_simulacao_e_gravada_na_hora(
+        self, controlador_sem_variavel: ConstrutorDeControlador, caminho_preferencias: Path
+    ) -> None:
+        controlador = controlador_sem_variavel(Preferencias())
+
+        controlador.definirSimulacao('arduino', True)
+
+        assert preferencias.carregar(caminho_preferencias).componentes_simulados == frozenset({'arduino'})
+
+    def test_restaurar_aparencia_volta_aos_padroes(self, controlador_sem_variavel: ConstrutorDeControlador) -> None:
+        controlador = controlador_sem_variavel(Preferencias(aparencia={'quantidade_leds': 90.0}))
+
+        controlador.restaurarAparenciaPadrao()
+
+        assert controlador.quantidadeLeds == 60

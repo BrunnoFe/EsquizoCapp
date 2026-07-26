@@ -115,7 +115,15 @@ python main.py
 ### Rodando sem hardware
 
 Para testar a interface, os modos de análise ou o modelo sem BITalino nem Arduino
-plugados, troque a borda real pela simulada:
+plugados, troque a borda real pela simulada. **Pelo app**, sem terminal: abra
+**Configurações** (ícone ☰ no trilho esquerdo) → aba **Simulação**, e ligue Arduino e/ou
+BITalino. A troca vale na hora, exige tudo desconectado, e é lembrada na próxima abertura.
+
+Com a simulação ativa, um selo âmbar aparece na barra de topo e os indicadores ARD/BIT
+ganham um anel âmbar. A execução é idêntica à real em todo o resto.
+
+Pela linha de comando — útil em scripts e na CI, e **tem precedência** sobre a escolha
+feita no app (que então aparece travada, com o motivo na tela):
 
 ```powershell
 $env:ESQUIZOCAP_FAKE="1"           # tudo simulado
@@ -125,7 +133,9 @@ python main.py
 ```
 
 O BITalino simulado gera uma senoide de 10 Hz (banda Alpha) com ruído gaussiano — sinal
-plausível o bastante para exercitar a análise espectral de ponta a ponta.
+plausível o bastante para exercitar a análise espectral de ponta a ponta. Ele responde
+igual pelos dois modos de aquisição, então o seletor de modo fica desabilitado: a escolha
+não teria efeito, e fingir que tem seria pior.
 
 Também dá para rodar só o núcleo, sem abrir janela nenhuma:
 

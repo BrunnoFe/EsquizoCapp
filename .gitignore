@@ -193,3 +193,6 @@ godot/
 interface_tkinter_legado/
 docs/agents/
 docs/adr
+
+# Preferências gravadas pelo app: estado da máquina de quem roda, não do projeto.
+settings/preferencias.json

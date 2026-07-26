@@ -6,6 +6,7 @@ import QtQuick.Layouts
 import QtQuick.Dialogs
 import Qt5Compat.GraphicalEffects
 import EsquizoCap.Base 1.0
+import EsquizoCap.Configuracoes 1.0
 import EsquizoCap.Controles 1.0
 import EsquizoCap.Janela 1.0
 import EsquizoCap.Layout 1.0
@@ -80,8 +81,10 @@ ApplicationWindow {
             // status do hardware (o LSL não é mais exibido)
             ColumnLayout {
                 spacing: 18; Layout.alignment: Qt.AlignHCenter
-                StatusDot { label: "ARD"; ok: controller.arduinoConectado }
-                StatusDot { label: "BIT"; ok: controller.bitalinoConectado }
+                StatusDot { label: "ARD"; ok: controller.arduinoConectado
+                    simulado: controller.arduinoSimulado }
+                StatusDot { label: "BIT"; ok: controller.bitalinoConectado
+                    simulado: controller.bitalinoSimulado }
             }
 
             Item { Layout.fillHeight: true }
@@ -89,10 +92,12 @@ ApplicationWindow {
             // configurações do app / tela cheia / sobre
             ColumnLayout {
                 spacing: 12; Layout.alignment: Qt.AlignHCenter
-                RailButton { iconName: "sliders"; tip: "Configurações do app"; small: true
+                RailButton { iconName: "sliders"; tip: "Aparência"; small: true
                     onClicked: settingsPanel.open = true }
                 RailButton { iconName: "expand"; tip: "Modo tela cheia"; small: true
                     onClicked: controller.alternarTelaCheia() }
+                RailButton { glyph: "☰"; tip: "Configurações"; small: true
+                    onClicked: janelaConfiguracoes.open = true }
                 RailButton { glyph: "i"; tip: "Sobre"; small: true; italic: true }
             }
         }
@@ -188,6 +193,23 @@ ApplicationWindow {
                 Text { text: "cap"; color: teal; font: parent.font; anchors.left: parent.right } }
 
             Item { Layout.fillWidth: true }
+
+            // Selo de simulação: sempre visível quando algum hardware é falso. Sem ele,
+            // uma sessão simulada é indistinguível de uma real na tela.
+            Rectangle {
+                visible: controller.emModoSimulacao
+                implicitWidth: seloRow.implicitWidth + 20; implicitHeight: 26; radius: 8
+                color: Qt.rgba(0.91, 0.639, 0.239, 0.14)
+                border.color: Qt.rgba(0.91, 0.639, 0.239, 0.45)
+                RowLayout {
+                    id: seloRow; anchors.centerIn: parent; spacing: 7
+                    Rectangle { implicitWidth: 6; implicitHeight: 6; radius: 3; color: "#e8a33d" }
+                    Text {
+                        text: "SIMULAÇÃO · " + controller.componentesSimulados.join(" + ").toUpperCase()
+                        color: "#e8a33d"; font.pixelSize: 11; font.bold: true; font.letterSpacing: 1
+                    }
+                }
+            }
 
             RowLayout {
                 spacing: 8
@@ -724,10 +746,28 @@ ApplicationWindow {
             }
         }
     }
+
+        // ============ BORDA DE SIMULAÇÃO (opcional, ver aba "Interface") ============
+        // Dentro do shell e sem MouseArea: é puramente decorativa e não pode roubar clique.
+        Rectangle {
+            anchors.fill: parent
+            visible: controller.emModoSimulacao && controller.bordaDeSimulacao
+            color: "transparent"
+            border.width: 3
+            border.color: Qt.rgba(0.91, 0.639, 0.239, 0.75)
+            radius: controller.telaCheia ? 0 : 16
+            z: 30
+        }
+
+        // ============ JANELA DE CONFIGURAÇÕES ============
+        // z acima dos painéis deslizantes (8/9) e da borda, abaixo do banner de erro (20)
+        // não serve aqui: o erro precisa aparecer sobre a janela, então ela fica em 15.
+        JanelaConfiguracoes { id: janelaConfiguracoes; z: 15 }
     }
 
     // fecha painéis com ESC / alterna tela cheia com F11
-    Shortcut { sequence: "Escape"; onActivated: { setupPanel.open=false; settingsPanel.open=false } }
+    Shortcut { sequence: "Escape"
+        onActivated: { setupPanel.open=false; settingsPanel.open=false; janelaConfiguracoes.open=false } }
     Shortcut { sequence: "F11"; onActivated: controller.alternarTelaCheia() }
     onVisibilityChanged: {}
     Connections { target: controller
@@ -745,8 +785,15 @@ ApplicationWindow {
         onAccepted: controller.salvarGravacao(selectedFile.toString())
         onRejected: controller.descartarGravacao()
     }
+    // Com "perguntar onde salvar" desligado, o controller grava direto na pasta
+    // configurada — o caso da instalação que roda sozinha e não pode parar esperando
+    // alguém clicar em "Salvar".
     Connections { target: controller
-        function onEstadoMudou() { if (controller.gravacaoPendente && !dialogoGravacao.visible) dialogoGravacao.open() } }
+        function onEstadoMudou() {
+            if (!controller.gravacaoPendente) return
+            if (!controller.perguntarOndeSalvar) controller.salvarGravacaoNaPastaPadrao()
+            else if (!dialogoGravacao.visible) dialogoGravacao.open()
+        } }
 
     // ---- banner de erro dispensável (falha de conexão, falha ao gravar...) ----
     Rectangle {

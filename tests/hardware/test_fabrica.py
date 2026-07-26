@@ -98,3 +98,54 @@ class TestSelecaoDeFakes:
 
         assert fabrica.usar_fake('arduino') is False
         assert isinstance(fabrica.criar_arduino(), ArduinoSerial)
+
+
+class TestPreferenciaDoUsuario:
+    """A segunda fonte da decisão: o que o menu de configurações gravou."""
+
+    def test_a_preferencia_decide_quando_o_ambiente_cala(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv(fabrica.NOME_VARIAVEL_FAKE, raising=False)
+
+        assert fabrica.componentes_simulados(frozenset({'arduino'})) == {'arduino'}
+        assert isinstance(fabrica.criar_arduino(frozenset({'arduino'})), ArduinoFake)
+        assert isinstance(fabrica.criar_bitalino(frozenset({'arduino'})), BitalinoLSL)
+
+    def test_preferencia_vazia_mantem_tudo_real(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv(fabrica.NOME_VARIAVEL_FAKE, raising=False)
+
+        assert isinstance(fabrica.criar_arduino(frozenset()), ArduinoSerial)
+
+    def test_o_ambiente_vence_a_preferencia(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Quem exportou a variável está depurando; um boot anterior não desfaz isso."""
+        monkeypatch.setenv(fabrica.NOME_VARIAVEL_FAKE, 'tudo')
+
+        assert fabrica.componentes_simulados(frozenset()) == set(fabrica.COMPONENTES_CONHECIDOS)
+        assert isinstance(fabrica.criar_arduino(frozenset()), ArduinoFake)
+
+    def test_o_ambiente_vence_tambem_para_desligar(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """`ESQUIZOCAP_FAKE=arduino` com preferência de simular o BITalino: o BITalino é real."""
+        monkeypatch.setenv(fabrica.NOME_VARIAVEL_FAKE, 'arduino')
+
+        assert fabrica.componentes_simulados(frozenset({'bitalino'})) == {'arduino'}
+        assert isinstance(fabrica.criar_bitalino(frozenset({'bitalino'})), BitalinoLSL)
+
+    def test_leitores_por_modo_respeitam_a_preferencia(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv(fabrica.NOME_VARIAVEL_FAKE, raising=False)
+
+        leitores = fabrica.criar_leitores_por_modo(frozenset({'bitalino'}))
+
+        assert leitores[ModoAquisicao.DIRETO] is leitores[ModoAquisicao.OPENSIGNALS]
+        assert isinstance(leitores[ModoAquisicao.DIRETO], BitalinoSintetico)
+
+    @pytest.mark.parametrize('valor', ['tudo', 'arduino'])
+    def test_a_interface_sabe_quando_o_ambiente_manda(self, monkeypatch: pytest.MonkeyPatch, valor: str) -> None:
+        """É o que desabilita os controles do menu, em vez de deixá-los mentir."""
+        monkeypatch.setenv(fabrica.NOME_VARIAVEL_FAKE, valor)
+
+        assert fabrica.simulacao_vem_do_ambiente() is True
+
+    @pytest.mark.parametrize('valor', ['', '   '])
+    def test_ambiente_vazio_nao_manda(self, monkeypatch: pytest.MonkeyPatch, valor: str) -> None:
+        monkeypatch.setenv(fabrica.NOME_VARIAVEL_FAKE, valor)
+
+        assert fabrica.simulacao_vem_do_ambiente() is False

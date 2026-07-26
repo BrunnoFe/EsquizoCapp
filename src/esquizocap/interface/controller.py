@@ -37,6 +37,7 @@ import logging
 import math
 import time
 from collections.abc import Callable
+from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -48,14 +49,17 @@ from esquizocap.aplicacao import EventoErro, EventoParado, EventoResultado, Serv
 from esquizocap.dominio.ciclo_aquisicao import CicloAquisicao, ControlesUsuario, ModoAnalise, ResultadoCiclo
 from esquizocap.dominio.predicao import ModeloPreditor
 from esquizocap.hardware import constantes, portas_bluetooth
-from esquizocap.hardware.contratos import ErroConexaoArduino, LeitorBitalino
+from esquizocap.hardware.arduino_fake import ArduinoFake
+from esquizocap.hardware.contratos import ControladorLedArduino, ErroConexaoArduino, LeitorBitalino
 from esquizocap.hardware.modo_aquisicao import (
     MODO_AQUISICAO_PADRAO,
     MODOS_AQUISICAO,
     ModoAquisicao,
     modo_do_rotulo,
 )
+from esquizocap.infraestrutura import preferencias
 from esquizocap.infraestrutura.config import Configuracao
+from esquizocap.infraestrutura.preferencias import Preferencias
 from esquizocap.interface.constantes import (
     DURACAO_TRANSICAO_MATIZ_MS,
     INTERVALO_DRENAGEM_MS,
@@ -99,6 +103,31 @@ _NOME_DO_MODO_LUMINOSIDADE_POR_INDICE = {indice + 1: nome for indice, nome in en
 _CAMPOS_QUE_ATUALIZAM_CONTROLES_AO_VIVO = frozenset(
     {'saturacao', 'brilho', 'intervalo_amostragem_ms', 'tamanho_janela_amostras'}
 )
+
+INTERVALO_GRAVACAO_PREFERENCIAS_MS: int = 1000
+"""Silêncio necessário antes de gravar as preferências em disco.
+
+Sem esta espera, arrastar um slider gravaria o arquivo dezenas de vezes por segundo, na
+GUI thread. O encerramento grava incondicionalmente, então nada se perde por esperar."""
+
+
+def _aparencia_das_preferencias(valores: dict[str, float]) -> AparenciaVisual:
+    """Monta a `AparenciaVisual` a partir do que foi salvo, limitando cada valor à sua faixa.
+
+    O clamp acontece aqui, e não na infraestrutura: a tabela de faixas é da camada de
+    interface. Chaves desconhecidas (de uma versão anterior, ou de um slider removido) são
+    descartadas — a alternativa seria um `TypeError` no construtor e a app não subindo por
+    causa de uma preferência cosmética.
+    """
+    aparencia = AparenciaVisual()
+    for nome, valor in valores.items():
+        limite = LIMITES_APARENCIA_VISUAL.get(nome)
+        if limite is None:
+            logger.warning(f'Preferência de aparência desconhecida, descartada: "{nome}".')
+            continue
+        tipo = type(getattr(aparencia, nome))
+        setattr(aparencia, nome, tipo(limitar(valor, limite.minimo, limite.maximo)))
+    return aparencia
 
 
 def _obter_selecao(controller: EsquizoController) -> ConfiguracaoSelecionada:
@@ -189,7 +218,10 @@ class _NucleoControlador:
         _estado_app: EstadoApp
         _mensagem_status: str
         _simulador_leds: SimuladorFitaLed
+        _arduino: ControladorLedArduino
         _leitores_por_modo: dict[ModoAquisicao, LeitorBitalino]
+        _preferencias: Preferencias
+        _conectando_bitalino: bool
         _portas_seriais_disponiveis: list[str]
         _baud_rates_disponiveis: list[str]
         _canais_bitalino_disponiveis: list[str]
@@ -203,6 +235,11 @@ class _NucleoControlador:
         @staticmethod
         def _rotulo_de_conexao(conectado: bool) -> str: ...
         def _reavaliar_prontidao(self) -> None: ...
+        def _reconstruir_hardware(self) -> None: ...
+        def _reaplicar_canal_ativo_nos_leitores(self) -> None: ...
+        def _agendar_gravacao_de_preferencias(self) -> None: ...
+        def _reportar_erro(self, mensagem: str) -> None: ...
+        def _aquisicao_em_curso(self) -> bool: ...
         def _porta_derivada_do_bitalino(self) -> str: ...
         def _modo_aquisicao_escolhido(self) -> ModoAquisicao: ...
         def _leitor_do_modo_escolhido(self) -> LeitorBitalino: ...
@@ -383,9 +420,7 @@ class _PropriedadesConfiguracao(_NucleoControlador):
 
         # O combobox oferece só 1 a 6, mas o QML pode mandar o texto de "nada escolhido".
         # Nesse caso não há canal a informar — a prontidão já barra o início da aquisição.
-        if valor in CANAIS_VALIDOS:
-            for leitor in set(self._leitores_por_modo.values()):
-                leitor.definir_canal_ativo(canal=int(valor))
+        self._reaplicar_canal_ativo_nos_leitores()
 
         self._reavaliar_prontidao()
         self.estadoMudou.emit()
@@ -712,14 +747,24 @@ class EsquizoController(
     erro — vazia se sucesso). A thread auxiliar de conexão emite este sinal Qt para
     voltar à GUI thread; ver `conexao_bitalino_assincrona.ConectorBitalinoAssincrono`."""
 
-    def __init__(self, configuracao: Configuracao, modelo: ModeloPreditor) -> None:
+    def __init__(
+        self,
+        configuracao: Configuracao,
+        modelo: ModeloPreditor,
+        preferencias_usuario: Preferencias | None = None,
+        caminho_preferencias: Path = preferencias.CAMINHO_PADRAO,
+    ) -> None:
         super().__init__()
         self._configuracao_app = configuracao
         self._modelo = modelo
-        self._arduino = hardware.criar_arduino()
+        # Opcional para os testes, que constroem o controller sem tocar em disco. Na
+        # aplicação real quem carrega é o `main`, junto da configuração.
+        self._preferencias = preferencias_usuario if preferencias_usuario is not None else Preferencias()
+        self._caminho_preferencias = caminho_preferencias
+        self._arduino = hardware.criar_arduino(self._preferencias.componentes_simulados)
         # Os dois modos nascem juntos: os construtores são inertes, nada toca o hardware
         # até `conectar`. Assim a troca de modo é só escolher outra chave deste mapa.
-        self._leitores_por_modo = hardware.criar_leitores_por_modo()
+        self._leitores_por_modo = hardware.criar_leitores_por_modo(self._preferencias.componentes_simulados)
         self._conector_bitalino = ConectorBitalinoAssincrono()
         self._simulador_leds = SimuladorFitaLed()
         self._gravacao_pendente = GerenciadorGravacaoPendente()
@@ -758,7 +803,7 @@ class EsquizoController(
             canal_bitalino_inicial=str(constantes.CANAIS_BITALINO[0]),
             mac_bitalino_inicial=self._macs_bitalino_disponiveis[0],
         )
-        self._aparencia = AparenciaVisual()
+        self._aparencia = _aparencia_das_preferencias(self._preferencias.aparencia)
         self._ao_vivo = LeituraAoVivo()
         self._conexoes = EstadoConexoesHardware()
 
@@ -766,6 +811,11 @@ class EsquizoController(
         self._timer.setInterval(INTERVALO_DRENAGEM_MS)
         self._timer.timeout.connect(self._ao_bater_o_relogio)
         self._timer.start()
+
+        self._timer_preferencias = QTimer(self)
+        self._timer_preferencias.setSingleShot(True)
+        self._timer_preferencias.setInterval(INTERVALO_GRAVACAO_PREFERENCIAS_MS)
+        self._timer_preferencias.timeout.connect(self._salvar_preferencias)
 
         self.bitalinoConexaoFinalizada.connect(self._ao_concluir_conexao_bitalino)
 
@@ -925,6 +975,141 @@ class EsquizoController(
         """Com o BITalino simulado, o MESMO leitor responde pelos dois modos."""
         return len(set(self._leitores_por_modo.values())) == 1
 
+    # ---- modo simulação ------------------------------------------------------
+    def _componentes_simulados_agora(self) -> set[str]:
+        """O que está simulado de fato, deduzido dos objetos vivos.
+
+        Deduzido, e não lido da preferência: depois de uma reconstrução é o objeto que
+        manda, e a preferência pode estar sobreposta por `ESQUIZOCAP_FAKE`. Perguntar ao
+        estado real elimina a chance de a interface anunciar "real" com um fake em uso —
+        que é justamente o aviso que não pode mentir.
+        """
+        simulados: set[str] = set()
+        if isinstance(self._arduino, ArduinoFake):
+            simulados.add('arduino')
+        if self._bitalino_esta_simulado():
+            simulados.add('bitalino')
+        return simulados
+
+    def _aquisicao_em_curso(self) -> bool:
+        return self._estado_app in (EstadoApp.ADQUIRINDO, EstadoApp.PARANDO)
+
+    def _motivo_para_nao_alterar_simulacao(self) -> str:
+        """Por que os controles de simulação estão travados agora. Vazio = destravados."""
+        if hardware.simulacao_vem_do_ambiente():
+            return (
+                f'Definido pela variável de ambiente {hardware.NOME_VARIAVEL_FAKE}, '
+                'que tem precedência. Remova-a do terminal para escolher aqui.'
+            )
+        if self._aquisicao_em_curso():
+            return 'Pare a aquisição para trocar entre hardware real e simulado.'
+        if self._conectando_bitalino:
+            return 'Aguarde a conexão do BITalino terminar.'
+        if self._conexoes.arduino_conectado or self._conexoes.bitalino_conectado:
+            return 'Desconecte o Arduino e o BITalino para trocar entre hardware real e simulado.'
+        return ''
+
+    componentesSimulados = Property(
+        list, lambda self: sorted(self._componentes_simulados_agora()), notify=_Sinais.estadoMudou
+    )
+    arduinoSimulado = Property(
+        bool, lambda self: 'arduino' in self._componentes_simulados_agora(), notify=_Sinais.estadoMudou
+    )
+    bitalinoSimulado = Property(bool, lambda self: self._bitalino_esta_simulado(), notify=_Sinais.estadoMudou)
+    emModoSimulacao = Property(bool, lambda self: bool(self._componentes_simulados_agora()), notify=_Sinais.estadoMudou)
+    podeAlterarSimulacao = Property(
+        bool, lambda self: not self._motivo_para_nao_alterar_simulacao(), notify=_Sinais.estadoMudou
+    )
+    motivoSimulacaoTravada = Property(
+        str, lambda self: self._motivo_para_nao_alterar_simulacao(), notify=_Sinais.estadoMudou
+    )
+    bordaDeSimulacao = Property(bool, lambda self: self._preferencias.borda_de_simulacao, notify=_Sinais.estadoMudou)
+
+    @Slot(bool)
+    def definirBordaDeSimulacao(self, valor: bool) -> None:
+        if bool(valor) == self._preferencias.borda_de_simulacao:
+            return
+        self._preferencias.borda_de_simulacao = bool(valor)
+        self._salvar_preferencias()
+        self.estadoMudou.emit()
+
+    @Slot()
+    def restaurarAparenciaPadrao(self) -> None:
+        """Devolve os 16 controles do painel "Aparência" aos valores de fábrica."""
+        self._aparencia = AparenciaVisual()
+        self._salvar_preferencias()
+        self._emitir_todos_os_sinais()
+
+    @Slot(str, bool)
+    def definirSimulacao(self, componente: str, ativo: bool) -> None:
+        """Liga ou desliga a simulação de um componente, reconstruindo o hardware na hora.
+
+        Recusa com aviso na tela quando há dispositivo conectado ou aquisição em curso: a
+        troca substitui os objetos de borda, e fazê-la com um stream aberto deixaria o
+        objeto antigo segurando porta serial ou socket até o processo morrer.
+        """
+        if componente not in hardware.COMPONENTES_CONHECIDOS:
+            logger.warning(f'Pedido para simular um componente desconhecido: "{componente}". Ignorado.')
+            return
+
+        motivo = self._motivo_para_nao_alterar_simulacao()
+        if motivo:
+            logger.info(f'Troca de simulação de "{componente}" recusada: {motivo}')
+            self._reportar_erro(motivo)
+            return
+
+        desejados = set(self._preferencias.componentes_simulados)
+        desejados.add(componente) if ativo else desejados.discard(componente)
+        if frozenset(desejados) == self._preferencias.componentes_simulados:
+            return
+
+        self._preferencias.componentes_simulados = frozenset(desejados)
+        self._reconstruir_hardware()
+        self._salvar_preferencias()
+
+    def _reconstruir_hardware(self) -> None:
+        """Descarta os objetos de borda e cria novos conforme as preferências.
+
+        Só é seguro com tudo desconectado — quem chama garante isso. O encerramento dos
+        antigos é feito mesmo assim, porque um leitor que conectou e desconectou pode ter
+        recurso pendente, e um objeto órfão segurando a porta é invisível até a próxima
+        tentativa de conexão falhar sem motivo aparente.
+        """
+        simulados = self._preferencias.componentes_simulados
+        logger.info(f'Reconstruindo o hardware. Componentes simulados: {sorted(simulados) or "nenhum"}.')
+
+        self._encerrar_todos_os_leitores()
+        self._arduino.desconectar()
+
+        self._arduino = hardware.criar_arduino(simulados)
+        self._leitores_por_modo = hardware.criar_leitores_por_modo(simulados)
+        self._conexoes.arduino_conectado = False
+        self._conexoes.bitalino_conectado = False
+
+        # A porta em cache foi derivada para o hardware anterior, e a lista de portas
+        # seriais muda quando o Arduino deixa de ser o fake (que anuncia portas fictícias).
+        self._porta_bitalino_em_cache = None
+        self._portas_seriais_disponiveis = self._arduino.listar_portas()
+        if self._selecao.porta_arduino not in self._portas_seriais_disponiveis:
+            self._selecao.porta_arduino = (
+                self._portas_seriais_disponiveis[0] if self._portas_seriais_disponiveis else ''
+            )
+
+        # O canal ativo é estado da SELEÇÃO, não do leitor: sem reaplicá-lo, os leitores
+        # novos converteriam o canal 1 enquanto a tela mostra outro. Nenhum erro, cor errada.
+        self._reaplicar_canal_ativo_nos_leitores()
+
+        self._reavaliar_prontidao()
+        self._emitir_todos_os_sinais()
+
+    def _reaplicar_canal_ativo_nos_leitores(self) -> None:
+        """Informa aos leitores o canal que já está escolhido na tela."""
+        canal = self._selecao.canal_bitalino
+        if canal not in CANAIS_VALIDOS:
+            return
+        for leitor in set(self._leitores_por_modo.values()):
+            leitor.definir_canal_ativo(canal=int(canal))
+
     def _seletor_de_modo_habilitado(self) -> bool:
         """O modo só pode mudar com o dispositivo desconectado.
 
@@ -946,7 +1131,7 @@ class EsquizoController(
         Vazio quando não há nada a dizer — a interface esconde o aviso nesse caso.
         """
         if self._bitalino_esta_simulado():
-            return 'BITalino simulado (ESQUIZOCAP_FAKE): o sinal é sintético e a escolha de modo não tem efeito.'
+            return 'BITalino simulado: o sinal é sintético e a escolha de modo não tem efeito.'
 
         if self._conexoes.bitalino_conectado:
             return 'Desconecte o Bitalino para trocar de modo.'
@@ -1063,6 +1248,33 @@ class EsquizoController(
     # ---- gravação (Excel) -------------------------------------------------
     gravacaoPendente = Property(bool, lambda self: self._gravacao_pendente.pendente, notify=_Sinais.estadoMudou)
     nomeSugeridoGravacao = Property(str, lambda self: self._gravacao_pendente.nome_sugerido, notify=_Sinais.estadoMudou)
+    perguntarOndeSalvar = Property(
+        bool, lambda self: self._preferencias.perguntar_onde_salvar, notify=_Sinais.estadoMudou
+    )
+    pastaGravacoes = Property(str, lambda self: str(self._preferencias.pasta_gravacoes), notify=_Sinais.estadoMudou)
+    pastaGravacoesUrl = Property(
+        str,
+        lambda self: QUrl.fromLocalFile(str(self._preferencias.pasta_gravacoes)).toString(),
+        notify=_Sinais.estadoMudou,
+    )
+
+    @Slot(bool)
+    def definirPerguntarOndeSalvar(self, valor: bool) -> None:
+        if bool(valor) == self._preferencias.perguntar_onde_salvar:
+            return
+        self._preferencias.perguntar_onde_salvar = bool(valor)
+        self._salvar_preferencias()
+        self.estadoMudou.emit()
+
+    @Slot(str)
+    def definirPastaGravacoes(self, caminho: str) -> None:
+        """Recebe a pasta escolhida no `FolderDialog` (pode vir como `file://` URL)."""
+        caminho_local = QUrl(caminho).toLocalFile() or caminho
+        if not caminho_local.strip():
+            return
+        self._preferencias.pasta_gravacoes = Path(caminho_local)
+        self._salvar_preferencias()
+        self.estadoMudou.emit()
 
     @Slot(str)
     def salvarGravacao(self, caminho: str) -> None:
@@ -1076,6 +1288,24 @@ class EsquizoController(
         except ErroDeGravacao as erro:
             self._reportar_erro(str(erro))
         self.estadoMudou.emit()
+
+    @Slot()
+    def salvarGravacaoNaPastaPadrao(self) -> None:
+        """Grava sem diálogo, na pasta configurada, com o nome sugerido.
+
+        Usado quando "perguntar onde salvar" está desligado — o caso da instalação que roda
+        sozinha e não pode parar esperando alguém clicar em "Salvar".
+        """
+        pasta = self._preferencias.pasta_gravacoes
+        try:
+            pasta.mkdir(parents=True, exist_ok=True)
+        except OSError as erro:
+            self._reportar_erro(
+                f'Não foi possível criar a pasta de gravações "{pasta}": {erro}. '
+                'A gravação continua pendente — escolha outro destino nas configurações.'
+            )
+            return
+        self.salvarGravacao(str(pasta / f'{self._gravacao_pendente.nome_sugerido}.xlsx'))
 
     @Slot()
     def descartarGravacao(self) -> None:
@@ -1094,6 +1324,8 @@ class EsquizoController(
         self._arduino.desconectar()
         self._conexoes.arduino_conectado = False
         self._conexoes.bitalino_conectado = False
+        # Incondicional: um ajuste feito no último segundo ainda estaria em debounce.
+        self._salvar_preferencias()
 
     # ---- notificação e setters genéricos -----------------------------------
     def _emitir_todos_os_sinais(self) -> None:
@@ -1114,8 +1346,20 @@ class EsquizoController(
         setattr(dono, atributo, valor)
         if dono is self._selecao and atributo in _CAMPOS_QUE_ATUALIZAM_CONTROLES_AO_VIVO and self._servico is not None:
             self._servico.atualizar_controles(self._controles_usuario_atuais())
+        if dono is self._aparencia:
+            self._agendar_gravacao_de_preferencias()
         self._reavaliar_prontidao()
         self._emitir_todos_os_sinais()
+
+    # ---- preferências do usuário -------------------------------------------
+    def _agendar_gravacao_de_preferencias(self) -> None:
+        """Reinicia a contagem do debounce. Só o último ajuste de uma rajada chega ao disco."""
+        self._timer_preferencias.start()
+
+    def _salvar_preferencias(self) -> None:
+        self._timer_preferencias.stop()
+        self._preferencias.aparencia = asdict(self._aparencia)
+        preferencias.salvar(self._preferencias, self._caminho_preferencias)
 
     @Slot(int)
     def definirModoLuminosidade(self, valor: int) -> None:
