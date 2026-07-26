@@ -162,3 +162,32 @@ regressão aqui custa muito mais do que uma no Modo Direto.
 
 O firmware não devolve ACK — o envio é "fire and forget". Um comando malformado não dá erro
 do lado Python; só a fita denuncia.
+
+---
+
+## 5. PENDENTE — troca real↔simulado sem reiniciar
+
+**Quando:** ao mexer em `EsquizoController._reconstruir_hardware` ou na fábrica de hardware.
+
+**Por que exige bancada:** a suíte cobre a troca com dublês e confirma que os objetos mudam
+de identidade, que os leitores antigos são encerrados e que o canal ativo é reaplicado. O
+que ela **não** alcança é o recurso do sistema operacional: um leitor órfão segurando a
+porta serial só se manifesta na próxima conexão real, que falha sem motivo aparente.
+
+Rode com o BITalino ligado e pareado, e o Arduino plugado. **Sem** `ESQUIZOCAP_FAKE` no
+terminal — com ela definida os controles ficam travados de propósito.
+
+1. Abra **Configurações → Simulação**. Ligue Arduino e BITalino.
+2. Confirme o selo âmbar na barra de topo e o anel âmbar em ARD e BIT.
+3. Rode uma aquisição simulada inteira, com gravação, até salvar o `.xlsx`.
+4. Desligue as duas simulações **na mesma sessão**, sem fechar o app.
+5. Conecte o BITalino e o Arduino de verdade e rode uma aquisição real.
+   - **É aqui que o teste vale.** Se o passo 4 deixou um objeto órfão, esta conexão falha.
+6. Confirme que o seletor de modo de aquisição voltou a ficar **habilitado** (sob simulação
+   ele fica travado, porque o sintético responde igual pelos dois modos).
+7. Confirme que o canal ativo escolhido antes da troca continua sendo o canal lido — troque
+   para o canal 4 antes do passo 4 e verifique que o sinal real vem do A4, não do A1.
+   Falha silenciosa clássica: números plausíveis, cor errada, nenhum erro.
+8. Com o BITalino conectado, tente ligar a simulação: deve **recusar** e explicar o motivo.
+9. Feche e reabra o app: as escolhas de simulação e os sliders de aparência devem voltar
+   como estavam (gravados em `settings/preferencias.json`).

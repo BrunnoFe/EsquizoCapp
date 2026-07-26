@@ -25,14 +25,20 @@ O que torna isso maior do que parece:
 - **O modelo de predição de hue foi calibrado num domínio de valores.** Entregar mV de ECG onde
   ele espera µV de EEG dá cor errada, mesmo com a conversão correta.
 
-## "Modo teste" na GUI
+## "Modo teste" na GUI — RESOLVIDO
 
-Substituir a variável de ambiente `ESQUIZOCAP_FAKE` (ver `hardware/fabrica.py`) por uma opção
-na interface: um liga/desliga de "Modo teste", com escolha de simular só o Arduino, só o
-BITalino, ou ambos. Motivação: quem opera a instalação não deve precisar de terminal.
+Feito: a aba "Simulação" do menu de configurações liga e desliga Arduino e BITalino
+separadamente, em runtime, e a escolha é gravada em `settings/preferencias.json`. A
+`ESQUIZOCAP_FAKE` continua existindo e **tem precedência** — serve aos testes e à CI, e a
+interface mostra os controles travados explicando isso quando a variável está definida.
 
-Nota de projeto: a fábrica hoje decide antes da GUI existir. O modo de aquisição já força essa
-decisão a virar escolha de runtime, então parte do caminho fica pronta.
+O obstáculo previsto ("a fábrica decide antes da GUI existir") foi resolvido dando à fábrica
+um parâmetro `simulados` e ao controller um `_reconstruir_hardware()`, permitido só com tudo
+desconectado — a mesma regra que o seletor de modo já usava.
+
+Fica em aberto: o `BitalinoSintetico` segue respondendo igual pelos dois modos de aquisição,
+então o modo simulado **não** exercita a diferença entre Modo OpenSignals e Modo Direto (ciclo
+vazio, unidade, escala). O seletor de modo continua travado sob simulação por causa disso.
 
 ## Canal sem sensor chega ao domínio em ADU
 

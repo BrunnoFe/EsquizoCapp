@@ -17,7 +17,7 @@ from PySide6.QtGui import QGuiApplication, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 
 from esquizocap.dominio.predicao import ErroDeModelo, carregar_modelo
-from esquizocap.infraestrutura import config, log, recursos
+from esquizocap.infraestrutura import config, log, preferencias, recursos
 from esquizocap.interface.controller import EsquizoController
 
 logger = logging.getLogger(__name__)
@@ -40,12 +40,16 @@ def main() -> int:
         logger.critical(str(erro))
         raise SystemExit(f'EsquizoCap não pôde iniciar:\n\n{erro}') from erro
 
+    # Fora do try acima de propósito: as preferências nunca levantam. Um arquivo estragado
+    # custa os ajustes do usuário, não a abertura da instalação — ver `preferencias.py`.
+    preferencias_usuario = preferencias.carregar()
+
     app = QGuiApplication(sys.argv)
     app.setApplicationName('EsquizoCap')
     app.setWindowIcon(QIcon(str(recursos.ICONE)))
 
     engine = QQmlApplicationEngine()
-    controller = EsquizoController(configuracao=configuracao, modelo=modelo)
+    controller = EsquizoController(configuracao=configuracao, modelo=modelo, preferencias_usuario=preferencias_usuario)
     engine.rootContext().setContextProperty('controller', controller)
 
     base_qml = Path(__file__).resolve().parent / 'src' / 'esquizocap' / 'interface' / 'qml'

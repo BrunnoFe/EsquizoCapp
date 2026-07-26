@@ -2,7 +2,8 @@
 
 Cada borda de hardware (Arduino, BITalino) tem um contrato em `contratos.py` e duas
 implementações: a real e uma fake. A escolha entre elas é feita pela fábrica em
-`fabrica.py`, a partir da variável de ambiente `ESQUIZOCAP_FAKE`.
+`fabrica.py`, a partir das preferências do usuário ou da variável de ambiente
+`ESQUIZOCAP_FAKE`, que tem precedência.
 
 Este `__init__` só reexporta: quem consome escreve `hardware.criar_arduino()` ou
 `hardware.ErroStreamPerdido` sem precisar saber em qual módulo cada coisa mora.
@@ -25,6 +26,7 @@ from esquizocap.hardware.fabrica import (
     criar_arduino,
     criar_bitalino,
     criar_leitores_por_modo,
+    simulacao_vem_do_ambiente,
     usar_fake,
 )
 from esquizocap.hardware.modo_aquisicao import ModoAquisicao
@@ -42,5 +44,6 @@ __all__ = [
     'criar_arduino',
     'criar_bitalino',
     'criar_leitores_por_modo',
+    'simulacao_vem_do_ambiente',
     'usar_fake',
 ]
