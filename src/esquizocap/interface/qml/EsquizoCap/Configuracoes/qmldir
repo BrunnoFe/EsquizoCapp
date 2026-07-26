@@ -1,6 +1,8 @@
 module EsquizoCap.Configuracoes
 JanelaConfiguracoes 1.0 JanelaConfiguracoes.qml
 LinhaOpcao 1.0 LinhaOpcao.qml
+BotaoSecundario 1.0 BotaoSecundario.qml
 AbaSimulacao 1.0 AbaSimulacao.qml
 AbaGravacao 1.0 AbaGravacao.qml
 AbaInterface 1.0 AbaInterface.qml
+AbaDiagnostico 1.0 AbaDiagnostico.qml

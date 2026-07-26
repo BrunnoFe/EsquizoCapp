@@ -23,6 +23,32 @@ ColumnLayout {
     }
 
     SettingsCard {
+        title: "JANELA"
+        body: ColumnLayout {
+            width: parent.width
+            spacing: 16
+            LinhaOpcao {
+                titulo: "Iniciar em tela cheia"
+                descricao: "Para a instalação em projetor, que sempre abre assim."
+                ligado: controller.iniciarEmTelaCheia
+                onAlternado: (novoValor) => controller.definirIniciarEmTelaCheia(novoValor)
+            }
+            LinhaOpcao {
+                titulo: "Lembrar posição e tamanho"
+                descricao: "Reabre a janela onde ela estava. Desligar descarta a geometria guardada."
+                ligado: controller.lembrarGeometriaJanela
+                onAlternado: (novoValor) => controller.definirLembrarGeometriaJanela(novoValor)
+            }
+            LinhaOpcao {
+                titulo: "Selo \"MODO EXPOSIÇÃO\""
+                descricao: "O indicador pulsante na barra de topo."
+                ligado: controller.mostrarSeloExposicao
+                onAlternado: (novoValor) => controller.definirMostrarSeloExposicao(novoValor)
+            }
+        }
+    }
+
+    SettingsCard {
         title: "APARÊNCIA"
         body: ColumnLayout {
             width: parent.width
@@ -33,20 +59,9 @@ ColumnLayout {
                     + "Os valores são guardados e voltam na próxima abertura."
                 color: "#8fa6ac"; font.pixelSize: 11; wrapMode: Text.WordWrap
             }
-            Button {
-                id: restaurar
-                implicitWidth: 190; implicitHeight: 34
-                HoverHandler { cursorShape: Qt.PointingHandCursor }
-                background: Rectangle {
-                    radius: 8
-                    color: restaurar.hovered ? Qt.rgba(0.886, 0.325, 0.294, 0.18) : Qt.rgba(1, 1, 1, 0.06)
-                    Behavior on color { ColorAnimation { duration: 150 } }
-                }
-                contentItem: Text {
-                    text: "Restaurar aparência padrão"
-                    color: restaurar.hovered ? "#ff8079" : "#8fa6ac"; font.pixelSize: 12
-                    horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
-                }
+            BotaoSecundario {
+                text: "Restaurar aparência padrão"
+                destrutivo: true
                 onClicked: controller.restaurarAparenciaPadrao()
             }
         }

@@ -28,6 +28,13 @@ class TestRoundTrip:
             pasta_gravacoes=Path('D:/Gravacoes'),
             perguntar_onde_salvar=False,
             borda_de_simulacao=True,
+            formato_nome_gravacao='{modo}-{canal}',
+            gravar_por_padrao=True,
+            nivel_log='DEBUG',
+            iniciar_em_tela_cheia=True,
+            lembrar_geometria_janela=False,
+            geometria_janela={'x': 10, 'y': 20, 'largura': 800, 'altura': 600},
+            mostrar_selo_exposicao=False,
             aparencia={'quantidade_leds': 90.0},
         )
 
@@ -94,6 +101,11 @@ class TestToleranciaALixo:
             ('pasta_gravacoes', ''),
             ('perguntar_onde_salvar', 'sim'),
             ('borda_de_simulacao', 1),
+            ('gravar_por_padrao', 'sim'),
+            ('mostrar_selo_exposicao', 0),
+            ('formato_nome_gravacao', 42),
+            ('nivel_log', ['DEBUG']),
+            ('geometria_janela', [10, 20]),
             ('aparencia', ['quantidade_leds']),
         ],
     )

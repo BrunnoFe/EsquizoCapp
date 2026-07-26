@@ -27,7 +27,13 @@ class GerenciadorGravacaoPendente:
         """Há uma gravação esperando decisão do usuário?"""
         return bool(self._resultados)
 
-    def oferecer(self, resultados: list[ResultadoCiclo], modo: str) -> None:
+    def oferecer(
+        self,
+        resultados: list[ResultadoCiclo],
+        modo: str,
+        formato_nome: str = '',
+        contexto_nome: dict[str, str] | None = None,
+    ) -> None:
         """Registra os resultados de uma aquisição recém-terminada como pendentes.
 
         Args:
@@ -35,11 +41,13 @@ class GerenciadorGravacaoPendente:
                 torna nada pendente.
             modo: `ModoAnalise.value` usado na aquisição, para sugerir um nome de
                 arquivo condizente.
+            formato_nome: Modelo do nome escolhido pelo usuário. Vazio = padrão.
+            contexto_nome: Canal e taxa da sessão, para os marcadores correspondentes.
         """
         if not resultados:
             return
         self._resultados = resultados
-        self.nome_sugerido = persistencia.nome_sugerido(modo)
+        self.nome_sugerido = persistencia.nome_sugerido(modo, formato_nome, contexto_nome)
 
     def salvar_em(self, destino: Path) -> None:
         """Grava os resultados pendentes em `destino` e limpa a pendência.

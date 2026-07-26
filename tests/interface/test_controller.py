@@ -8,7 +8,8 @@ o travamento do seletor de modo.
 Tudo aqui roda com `ESQUIZOCAP_FAKE=tudo`: nenhum teste toca hardware.
 """
 
-from collections.abc import Callable
+import logging
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
@@ -21,6 +22,7 @@ from esquizocap.hardware.arduino_real import ArduinoSerial
 from esquizocap.hardware.bitalino_fake import BitalinoSintetico
 from esquizocap.hardware.bitalino_real import BitalinoLSL
 from esquizocap.hardware.modo_aquisicao import ModoAquisicao
+from esquizocap.infraestrutura import log as esquizocap_log
 from esquizocap.infraestrutura import preferencias
 from esquizocap.infraestrutura.config import Configuracao
 from esquizocap.infraestrutura.preferencias import Preferencias
@@ -53,6 +55,22 @@ class LeitorEspiao:
 def aplicacao_qt() -> QCoreApplication:
     """Uma `QCoreApplication` por módulo: o Qt não deixa criar duas."""
     return QCoreApplication.instance() or QCoreApplication([])
+
+
+@pytest.fixture(autouse=True)
+def preservar_nivel_de_log() -> Iterator[None]:
+    """`log.definir_nivel` mexe no logger `esquizocap`, que é global ao processo.
+
+    Sem restaurar, um teste que liga o DEBUG deixaria a suíte inteira em DEBUG a partir
+    dali — barulho no output e, pior, um teste que só passa dependendo da ordem.
+    """
+    logger_app = logging.getLogger('esquizocap')
+    nivel_original = logger_app.level
+    niveis_dos_handlers = [(handler, handler.level) for handler in logger_app.handlers]
+    yield
+    logger_app.setLevel(nivel_original)
+    for handler, nivel in niveis_dos_handlers:
+        handler.setLevel(nivel)
 
 
 @pytest.fixture
@@ -609,3 +627,125 @@ class TestPersistenciaDasPreferencias:
         controlador.restaurarAparenciaPadrao()
 
         assert controlador.quantidadeLeds == 60
+
+    def test_preferencias_de_arranque_chegam_a_selecao(self, controlador_sem_variavel: ConstrutorDeControlador) -> None:
+        """Guardar a preferência sem aplicá-la no arranque a tornaria decorativa."""
+        controlador = controlador_sem_variavel(Preferencias(gravar_por_padrao=True, iniciar_em_tela_cheia=True))
+
+        assert controlador._selecao.gravar_aquisicao is True
+        assert controlador.telaCheia is True
+
+    def test_nivel_de_log_salvo_e_aplicado_no_arranque(self, controlador_sem_variavel: ConstrutorDeControlador) -> None:
+        controlador = controlador_sem_variavel(Preferencias(nivel_log='DEBUG'))
+
+        assert controlador.nivelLog == 'DEBUG'
+        assert logging.getLogger('esquizocap').level == logging.DEBUG
+
+    def test_nivel_de_log_desconhecido_nao_derruba_o_arranque(
+        self, controlador_sem_variavel: ConstrutorDeControlador
+    ) -> None:
+        controlador = controlador_sem_variavel(Preferencias(nivel_log='VERBOSO'))
+
+        assert controlador.nivelLog == 'VERBOSO', 'o valor guardado é preservado'
+
+
+class TestNomeDoArquivoDeGravacao:
+    def test_a_previa_reflete_o_formato_escolhido(self, controlador: EsquizoController) -> None:
+        """A prévia é o que denuncia um marcador digitado errado ANTES da gravação."""
+        controlador.definirCanalPorIndice(3)
+
+        controlador.definirFormatoNomeGravacao('sessao_{canal}_{taxa}')
+
+        assert controlador.previaNomeGravacao == 'sessao_A4_1000Hz.xlsx'
+
+    def test_a_previa_acompanha_a_troca_de_canal(self, controlador: EsquizoController) -> None:
+        controlador.definirFormatoNomeGravacao('{canal}')
+        controlador.definirCanalPorIndice(0)
+        assert controlador.previaNomeGravacao == 'A1.xlsx'
+
+        controlador.definirCanalPorIndice(4)
+
+        assert controlador.previaNomeGravacao == 'A5.xlsx'
+
+    def test_formato_invalido_nao_estoura_na_previa(self, controlador: EsquizoController) -> None:
+        controlador.definirFormatoNomeGravacao('{nao_existe}')
+
+        assert controlador.previaNomeGravacao.startswith('Gravação ')
+
+    def test_o_formato_e_persistido(
+        self, controlador_sem_variavel: ConstrutorDeControlador, caminho_preferencias: Path
+    ) -> None:
+        controlador = controlador_sem_variavel(Preferencias())
+
+        controlador.definirFormatoNomeGravacao('coleta_{data}')
+        controlador.encerrarTudo()
+
+        assert preferencias.carregar(caminho_preferencias).formato_nome_gravacao == 'coleta_{data}'
+
+
+class TestGeometriaDaJanela:
+    def test_guarda_e_devolve_a_geometria(self, controlador_sem_variavel: ConstrutorDeControlador) -> None:
+        controlador = controlador_sem_variavel(Preferencias())
+
+        controlador.salvarGeometriaJanela(120, 80, 1000, 700)
+
+        assert controlador.temGeometriaSalva is True
+        assert (controlador.janelaX, controlador.janelaY) == (120, 80)
+        assert (controlador.janelaLargura, controlador.janelaAltura) == (1000, 700)
+
+    def test_nao_guarda_nada_com_a_opcao_desligada(self, controlador_sem_variavel: ConstrutorDeControlador) -> None:
+        controlador = controlador_sem_variavel(Preferencias(lembrar_geometria_janela=False))
+
+        controlador.salvarGeometriaJanela(120, 80, 1000, 700)
+
+        assert controlador.temGeometriaSalva is False
+
+    def test_desligar_a_opcao_descarta_a_geometria_guardada(
+        self, controlador_sem_variavel: ConstrutorDeControlador
+    ) -> None:
+        """Manter a geometria antiga faria a opção parecer quebrada ao ser religada depois."""
+        controlador = controlador_sem_variavel(
+            Preferencias(geometria_janela={'x': 1, 'y': 2, 'largura': 3, 'altura': 4})
+        )
+
+        controlador.definirLembrarGeometriaJanela(False)
+
+        assert controlador._preferencias.geometria_janela == {}
+
+    def test_geometria_incompleta_nao_conta_como_salva(self, controlador_sem_variavel: ConstrutorDeControlador) -> None:
+        """Restaurar com altura faltando abriria a janela com dimensão zero."""
+        controlador = controlador_sem_variavel(Preferencias(geometria_janela={'x': 1, 'y': 2}))
+
+        assert controlador.temGeometriaSalva is False
+
+
+class TestDiagnostico:
+    def test_reune_o_que_sempre_e_perguntado_de_volta(self, controlador: EsquizoController) -> None:
+        texto = controlador.textoDiagnostico
+
+        for esperado in ('Modo de aquisição', 'Taxa acordada', 'Canal ativo', 'Simulação', 'Arquivo de log'):
+            assert esperado in texto
+
+    def test_diz_quando_esta_simulado(self, controlador: EsquizoController) -> None:
+        """O `controlador` roda com ESQUIZOCAP_FAKE=tudo."""
+        assert 'arduino' in controlador.textoDiagnostico
+        assert 'bitalino' in controlador.textoDiagnostico
+
+    def test_diz_quando_o_hardware_e_real(self, controlador_sem_variavel: ConstrutorDeControlador) -> None:
+        controlador = controlador_sem_variavel(Preferencias())
+
+        assert 'hardware real' in controlador.textoDiagnostico
+
+    def test_copiar_sem_area_de_transferencia_nao_estoura(self, controlador: EsquizoController) -> None:
+        """Sob `QCoreApplication` não há área de transferência; um recurso de conveniência
+        não pode derrubar a aplicação."""
+        controlador.copiarDiagnostico()
+
+    def test_abrir_log_sem_arquivo_avisa_em_vez_de_estourar(
+        self, controlador: EsquizoController, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(esquizocap_log, 'arquivo_atual', lambda: None)
+
+        controlador.abrirLogAtual()
+
+        assert controlador.erroTexto != ''

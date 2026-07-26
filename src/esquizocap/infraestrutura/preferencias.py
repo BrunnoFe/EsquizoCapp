@@ -55,6 +55,26 @@ class Preferencias:
     vídeo da instalação e não quer publicar uma demonstração simulada por engano.
     """
 
+    formato_nome_gravacao: str = ''
+    """Modelo do nome do arquivo, com marcadores. Vazio = usa `FORMATO_NOME_PADRAO`."""
+
+    gravar_por_padrao: bool = False
+    """Se "gravar aquisição" já nasce ligado a cada sessão."""
+
+    nivel_log: str = ''
+    """Nível dos logs. Vazio = usa `log.NIVEL_PADRAO`."""
+
+    iniciar_em_tela_cheia: bool = False
+
+    lembrar_geometria_janela: bool = True
+
+    geometria_janela: dict[str, int] = field(default_factory=dict)
+    """`x`, `y`, `largura`, `altura` da última sessão. Vazio = a janela abre centralizada
+    no tamanho padrão."""
+
+    mostrar_selo_exposicao: bool = True
+    """O selo "MODO EXPOSIÇÃO" na barra de topo."""
+
     aparencia: dict[str, float] = field(default_factory=dict)
     """Valores dos controles do painel "Aparência". Vazio = usa os defaults de
     `AparenciaVisual`. Chaves desconhecidas são descartadas por quem aplica."""
@@ -87,12 +107,36 @@ def _converter(dados: dict[str, object], caminho: Path) -> Preferencias:
     elif pasta is not None:
         _avisar_valor_invalido('pasta_gravacoes', pasta, caminho)
 
-    for chave in ('perguntar_onde_salvar', 'borda_de_simulacao'):
+    for chave in (
+        'perguntar_onde_salvar',
+        'borda_de_simulacao',
+        'gravar_por_padrao',
+        'iniciar_em_tela_cheia',
+        'lembrar_geometria_janela',
+        'mostrar_selo_exposicao',
+    ):
         valor = dados.get(chave)
         if isinstance(valor, bool):
             setattr(preferencias, chave, valor)
         elif valor is not None:
             _avisar_valor_invalido(chave, valor, caminho)
+
+    for chave in ('formato_nome_gravacao', 'nivel_log'):
+        valor = dados.get(chave)
+        if isinstance(valor, str):
+            setattr(preferencias, chave, valor)
+        elif valor is not None:
+            _avisar_valor_invalido(chave, valor, caminho)
+
+    geometria = dados.get('geometria_janela')
+    if isinstance(geometria, dict):
+        preferencias.geometria_janela = {
+            str(nome): int(numero)
+            for nome, numero in geometria.items()
+            if isinstance(numero, int) and not isinstance(numero, bool)
+        }
+    elif geometria is not None:
+        _avisar_valor_invalido('geometria_janela', geometria, caminho)
 
     aparencia = dados.get('aparencia')
     if isinstance(aparencia, dict):

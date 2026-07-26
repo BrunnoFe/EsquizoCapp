@@ -32,9 +32,49 @@ class ErroDeGravacao(Exception):
     """Não foi possível gravar o arquivo (ex.: o Excel está com ele aberto)."""
 
 
-def nome_sugerido(modo: str) -> str:
-    """Nome default para o arquivo, que a interface oferece ao usuário."""
-    return f'Gravação {modo}_{pd.Timestamp.now():%d_%m_%Y_%H_%M_%S}'
+FORMATO_NOME_PADRAO = 'Gravação {modo}_{data}_{hora}'
+"""Formato herdado, mantido como default para não mudar o nome dos arquivos de quem já usa."""
+
+MARCADORES_DO_NOME: tuple[str, ...] = ('modo', 'data', 'hora', 'canal', 'taxa')
+"""Marcadores aceitos no formato do nome. Usados pela interface para listar as opções."""
+
+_CARACTERES_PROIBIDOS = '<>:"/\\|?*'
+"""Reservados pelo sistema de arquivos. Um `/` no formato viraria uma pasta que não existe,
+e a gravação falharia só no fim da aquisição — tarde demais para o operador reagir."""
+
+
+def nome_sugerido(modo: str, formato: str = '', contexto: dict[str, str] | None = None) -> str:
+    """Nome default para o arquivo, que a interface oferece ao usuário.
+
+    Args:
+        modo: `ModoAnalise.value` da aquisição.
+        formato: Modelo com marcadores (ver `MARCADORES_DO_NOME`). Vazio = usa o padrão.
+        contexto: Valores extras para os marcadores (`canal`, `taxa`).
+
+    Um formato com marcador desconhecido ou chave malformada cai no padrão, com aviso: uma
+    gravação recém-terminada não pode ser perdida por causa de uma chave digitada errada.
+    """
+    agora = pd.Timestamp.now()
+    valores = {
+        'modo': modo,
+        'data': f'{agora:%d_%m_%Y}',
+        'hora': f'{agora:%H_%M_%S}',
+        'canal': '',
+        'taxa': '',
+        **(contexto or {}),
+    }
+
+    try:
+        nome = (formato.strip() or FORMATO_NOME_PADRAO).format(**valores)
+    except (KeyError, IndexError, ValueError) as erro:
+        logger.warning(f'Formato de nome inválido ({formato!r}): {erro}. Usando o padrão.')
+        nome = FORMATO_NOME_PADRAO.format(**valores)
+
+    for caractere in _CARACTERES_PROIBIDOS:
+        nome = nome.replace(caractere, '-')
+    # Um formato que só tinha marcadores vazios produziria um nome em branco, e o
+    # `FileDialog` abriria sem nome nenhum.
+    return nome.strip(' .') or FORMATO_NOME_PADRAO.format(**valores)
 
 
 def salvar_gravacao(resultados: list[ResultadoCiclo], destino: Path) -> None:

@@ -25,6 +25,30 @@ ApplicationWindow {
     // fecha o hardware (Arduino/BITalino) antes da janela morrer de verdade
     onClosing: (close) => { controller.encerrarTudo() }
 
+    // ---- geometria lembrada entre execuções ----
+    // Restaurada UMA vez, no Component.onCompleted, e não por binding: um binding em x/y
+    // travaria a janela, porque arrastá-la escreve nas mesmas propriedades.
+    Component.onCompleted: {
+        if (controller.temGeometriaSalva) {
+            win.x = controller.janelaX
+            win.y = controller.janelaY
+            win.width = controller.janelaLargura
+            win.height = controller.janelaAltura
+        }
+        if (controller.telaCheia) win.showFullScreen()
+    }
+    // Em tela cheia a geometria é a do monitor, não a escolha do usuário — guardá-la faria
+    // a janela reabrir ocupando a tela inteira em modo normal.
+    onXChanged: if (!controller.telaCheia) salvarGeometria.restart()
+    onYChanged: if (!controller.telaCheia) salvarGeometria.restart()
+    onWidthChanged: if (!controller.telaCheia) salvarGeometria.restart()
+    onHeightChanged: if (!controller.telaCheia) salvarGeometria.restart()
+    Timer {
+        id: salvarGeometria
+        interval: 400
+        onTriggered: controller.salvarGeometriaJanela(win.x, win.y, win.width, win.height)
+    }
+
     // paleta de chrome
     readonly property color panelBg: "#0d1418"
     readonly property color cardBg: "#111d23"
@@ -213,6 +237,7 @@ ApplicationWindow {
 
             RowLayout {
                 spacing: 8
+                visible: controller.mostrarSeloExposicao
                 Rectangle { width: 7; height: 7; radius: 4; color: teal
                     SequentialAnimation on opacity { loops: Animation.Infinite
                         NumberAnimation { to: 0.35; duration: 800 }

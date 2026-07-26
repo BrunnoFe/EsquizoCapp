@@ -12,7 +12,7 @@ Item {
     property bool open: false
     property int abaAtual: 0
 
-    readonly property var abas: ["Simulação", "Gravação", "Interface"]
+    readonly property var abas: ["Simulação", "Gravação", "Interface", "Diagnóstico"]
 
     anchors.fill: parent
     visible: opacity > 0
@@ -135,6 +135,7 @@ Item {
                         AbaSimulacao {}
                         AbaGravacao {}
                         AbaInterface {}
+                        AbaDiagnostico {}
                     }
                 }
             }

@@ -18,6 +18,43 @@ from pathlib import Path
 FORMATO = '%(asctime)s | %(levelname)-8s | %(name)s.%(funcName)s | %(message)s'
 NIVEL_PADRAO = 'INFO'
 
+NIVEIS_DISPONIVEIS: tuple[str, ...] = ('DEBUG', 'INFO', 'WARNING', 'ERROR')
+"""Níveis oferecidos na interface. `CRITICAL` fica de fora: um nível que esconde erros
+não é uma escolha que ajude alguém a diagnosticar coisa nenhuma."""
+
+_arquivo_atual: Path | None = None
+
+
+def arquivo_atual() -> Path | None:
+    """O arquivo de log desta execução, ou `None` se o logging ainda não foi configurado.
+
+    Existe para a interface poder abrir o log sem que `main` tenha de carregar o caminho
+    por todas as camadas até o controller.
+    """
+    return _arquivo_atual
+
+
+def definir_nivel(nivel: str) -> None:
+    """Troca o nível dos logs da aplicação em runtime.
+
+    Ajusta o logger `esquizocap` E o handler de arquivo: o handler tem nível próprio, e
+    mexer só no logger deixaria os registros de DEBUG serem criados e descartados na
+    escrita — o sintoma seria "liguei o DEBUG e o arquivo continua igual".
+
+    Args:
+        nivel: Um de `NIVEIS_DISPONIVEIS`. Um valor desconhecido é ignorado com aviso.
+    """
+    if nivel not in NIVEIS_DISPONIVEIS:
+        logging.getLogger(__name__).warning(f'Nível de log desconhecido, ignorado: "{nivel}".')
+        return
+
+    logger_app = logging.getLogger('esquizocap')
+    logger_app.setLevel(nivel)
+    for handler in logger_app.handlers:
+        if isinstance(handler, logging.FileHandler):
+            handler.setLevel(nivel)
+    logger_app.info(f'Nível de log alterado para {nivel}.')
+
 
 def configurar_logging(pasta_logs: Path, nivel: str = NIVEL_PADRAO) -> Path:
     """Configura o logging da aplicação inteira. Chame uma vez, na inicialização.
@@ -29,8 +66,11 @@ def configurar_logging(pasta_logs: Path, nivel: str = NIVEL_PADRAO) -> Path:
     Returns:
         O caminho do arquivo de log desta execução.
     """
+    global _arquivo_atual
+
     pasta_logs.mkdir(parents=True, exist_ok=True)
     arquivo = pasta_logs / f'esquizocap_{time.strftime("%Y-%m-%d_%H-%M-%S")}.log'
+    _arquivo_atual = arquivo
 
     logging.config.dictConfig(
         {

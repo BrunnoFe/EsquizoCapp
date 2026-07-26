@@ -42,7 +42,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import Property, QObject, QTimer, QUrl, Signal, SignalInstance, Slot
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QDesktopServices, QGuiApplication
 
 from esquizocap import hardware
 from esquizocap.aplicacao import EventoErro, EventoParado, EventoResultado, ServicoAquisicao
@@ -57,7 +57,7 @@ from esquizocap.hardware.modo_aquisicao import (
     ModoAquisicao,
     modo_do_rotulo,
 )
-from esquizocap.infraestrutura import preferencias
+from esquizocap.infraestrutura import log, persistencia, preferencias, recursos
 from esquizocap.infraestrutura.config import Configuracao
 from esquizocap.infraestrutura.preferencias import Preferencias
 from esquizocap.interface.constantes import (
@@ -803,6 +803,11 @@ class EsquizoController(
             canal_bitalino_inicial=str(constantes.CANAIS_BITALINO[0]),
             mac_bitalino_inicial=self._macs_bitalino_disponiveis[0],
         )
+        self._selecao.gravar_aquisicao = self._preferencias.gravar_por_padrao
+        self._selecao.tela_cheia = self._preferencias.iniciar_em_tela_cheia
+        if self._preferencias.nivel_log:
+            log.definir_nivel(self._preferencias.nivel_log)
+
         self._aparencia = _aparencia_das_preferencias(self._preferencias.aparencia)
         self._ao_vivo = LeituraAoVivo()
         self._conexoes = EstadoConexoesHardware()
@@ -937,7 +942,12 @@ class EsquizoController(
         self._estado_app = EstadoApp.CONFIGURANDO
 
         if self._selecao.gravar_aquisicao:
-            self._gravacao_pendente.oferecer(resultados, modo.value)
+            self._gravacao_pendente.oferecer(
+                resultados,
+                modo.value,
+                formato_nome=self._preferencias.formato_nome_gravacao,
+                contexto_nome=self._contexto_do_nome(),
+            )
 
         self._reavaliar_prontidao()
         self._emitir_todos_os_sinais()
@@ -1258,6 +1268,47 @@ class EsquizoController(
         notify=_Sinais.estadoMudou,
     )
 
+    formatoNomeGravacao = Property(
+        str, lambda self: self._preferencias.formato_nome_gravacao, notify=_Sinais.estadoMudou
+    )
+    formatoNomePadrao = Property(str, lambda self: persistencia.FORMATO_NOME_PADRAO, constant=True)
+    marcadoresDoNome = Property(list, lambda self: list(persistencia.MARCADORES_DO_NOME), constant=True)
+    previaNomeGravacao = Property(str, lambda self: self._previa_do_nome(), notify=_Sinais.estadoMudou)
+    gravarPorPadrao = Property(bool, lambda self: self._preferencias.gravar_por_padrao, notify=_Sinais.estadoMudou)
+
+    def _contexto_do_nome(self) -> dict[str, str]:
+        """Canal e taxa da sessão, para os marcadores do nome do arquivo."""
+        return {
+            'canal': f'A{self._selecao.canal_bitalino}',
+            'taxa': f'{self._selecao.taxa_amostragem_hz}Hz',
+        }
+
+    def _previa_do_nome(self) -> str:
+        """Como o arquivo se chamaria se a gravação terminasse agora.
+
+        A prévia ao vivo é o que torna um campo de formato usável: sem ela o operador só
+        descobre que digitou `{cannal}` quando a gravação já acabou e o nome saiu errado.
+        """
+        return f'{persistencia.nome_sugerido(self._selecao.modo_analise, self._preferencias.formato_nome_gravacao, self._contexto_do_nome())}.xlsx'
+
+    @Slot(str)
+    def definirFormatoNomeGravacao(self, valor: str) -> None:
+        if valor == self._preferencias.formato_nome_gravacao:
+            return
+        self._preferencias.formato_nome_gravacao = valor
+        self._agendar_gravacao_de_preferencias()
+        self.estadoMudou.emit()
+
+    @Slot(bool)
+    def definirGravarPorPadrao(self, valor: bool) -> None:
+        """Liga o "gravar aquisição" desta sessão junto, para o efeito ser visível na hora."""
+        if bool(valor) == self._preferencias.gravar_por_padrao:
+            return
+        self._preferencias.gravar_por_padrao = bool(valor)
+        self._salvar_preferencias()
+        self._definir_e_notificar(self._selecao, 'gravar_aquisicao', bool(valor))
+        self.estadoMudou.emit()
+
     @Slot(bool)
     def definirPerguntarOndeSalvar(self, valor: bool) -> None:
         if bool(valor) == self._preferencias.perguntar_onde_salvar:
@@ -1312,6 +1363,164 @@ class EsquizoController(
         logger.warning('Usuário cancelou o salvamento. A gravação foi descartada.')
         self._gravacao_pendente.descartar()
         self.estadoMudou.emit()
+
+    # ---- diagnóstico --------------------------------------------------------
+    nivelLog = Property(str, lambda self: self._preferencias.nivel_log or log.NIVEL_PADRAO, notify=_Sinais.estadoMudou)
+    niveisLogDisponiveis = Property(list, lambda self: list(log.NIVEIS_DISPONIVEIS), constant=True)
+    temArquivoDeLog = Property(bool, lambda self: log.arquivo_atual() is not None, notify=_Sinais.estadoMudou)
+
+    @Slot(str)
+    def definirNivelLog(self, valor: str) -> None:
+        """Troca o nível dos logs na hora — sem reiniciar, que é o ponto de ter isto aqui."""
+        if valor == self.nivelLog:
+            return
+        log.definir_nivel(valor)
+        self._preferencias.nivel_log = valor
+        self._salvar_preferencias()
+        self.estadoMudou.emit()
+
+    @staticmethod
+    def _abrir_no_sistema(caminho: Path) -> bool:
+        """Abre um arquivo ou pasta no explorador. Devolve se deu certo."""
+        return bool(QDesktopServices.openUrl(QUrl.fromLocalFile(str(caminho.resolve()))))
+
+    @Slot()
+    def abrirPastaGravacoes(self) -> None:
+        pasta = self._preferencias.pasta_gravacoes
+        try:
+            pasta.mkdir(parents=True, exist_ok=True)
+        except OSError as erro:
+            self._reportar_erro(f'Não foi possível abrir a pasta de gravações "{pasta}": {erro}.')
+            return
+        if not self._abrir_no_sistema(pasta):
+            self._reportar_erro(f'Não foi possível abrir a pasta de gravações "{pasta}".')
+
+    @Slot()
+    def abrirPastaLogs(self) -> None:
+        if not self._abrir_no_sistema(recursos.PASTA_LOGS):
+            self._reportar_erro(f'Não foi possível abrir a pasta de logs "{recursos.PASTA_LOGS}".')
+
+    @Slot()
+    def abrirLogAtual(self) -> None:
+        arquivo = log.arquivo_atual()
+        if arquivo is None:
+            self._reportar_erro('Ainda não há arquivo de log para esta execução.')
+            return
+        if not self._abrir_no_sistema(arquivo):
+            self._reportar_erro(f'Não foi possível abrir o log "{arquivo}".')
+
+    textoDiagnostico = Property(str, lambda self: self._texto_diagnostico(), notify=_Sinais.estadoMudou)
+
+    def _texto_diagnostico(self) -> str:
+        """Resumo colável do estado da aplicação, para acompanhar um relato de problema.
+
+        Reúne o que sempre acaba sendo perguntado de volta ("qual modo? qual taxa? estava
+        simulado?"), incluindo o caminho do log desta execução.
+        """
+        simulados = sorted(self._componentes_simulados_agora())
+        linhas = [
+            'EsquizoCap — diagnóstico',
+            f'Modo de aquisição: {self._selecao.modo_aquisicao}',
+            f'Modo de predição: {self._selecao.modo_analise}',
+            f'Taxa acordada: {self._selecao.taxa_amostragem_hz} Hz',
+            f'Canal ativo: {self._selecao.canal_bitalino}',
+            f'MAC: {self._selecao.mac_bitalino}',
+            f'Porta de acesso: {self._porta_derivada_do_bitalino() or "(não encontrada)"}',
+            f'Porta do Arduino: {self._selecao.porta_arduino or "(nenhuma)"}',
+            f'Arduino conectado: {self._rotulo_de_conexao(self._conexoes.arduino_conectado)}',
+            f'BITalino conectado: {self._rotulo_de_conexao(self._conexoes.bitalino_conectado)}',
+            f'Simulação: {", ".join(simulados) if simulados else "nenhuma (hardware real)"}',
+            f'Estado: {self._estado_app.name}',
+            f'Modelo: {self._configuracao_app.caminho_modelo}',
+            f'Nível de log: {self.nivelLog}',
+            f'Arquivo de log: {log.arquivo_atual() or "(não configurado)"}',
+        ]
+        return '\n'.join(linhas)
+
+    @Slot()
+    def copiarDiagnostico(self) -> None:
+        """Copia o diagnóstico para a área de transferência.
+
+        A área de transferência só existe numa `QGuiApplication`; sob a `QCoreApplication`
+        dos testes não há nenhuma, e falhar aqui derrubaria um teste por um recurso de
+        conveniência. Nesse caso, o diagnóstico vai para o log.
+        """
+        aplicacao = QGuiApplication.instance()
+        area = aplicacao.clipboard() if isinstance(aplicacao, QGuiApplication) else None
+        if area is None:
+            logger.info(f'Sem área de transferência disponível. Diagnóstico:\n{self._texto_diagnostico()}')
+            return
+        area.setText(self._texto_diagnostico())
+
+    # ---- geometria e chrome da janela ---------------------------------------
+    lembrarGeometriaJanela = Property(
+        bool, lambda self: self._preferencias.lembrar_geometria_janela, notify=_Sinais.estadoMudou
+    )
+    iniciarEmTelaCheia = Property(
+        bool, lambda self: self._preferencias.iniciar_em_tela_cheia, notify=_Sinais.estadoMudou
+    )
+    mostrarSeloExposicao = Property(
+        bool, lambda self: self._preferencias.mostrar_selo_exposicao, notify=_Sinais.estadoMudou
+    )
+    temGeometriaSalva = Property(
+        bool,
+        lambda self: (
+            self._preferencias.lembrar_geometria_janela
+            and {'x', 'y', 'largura', 'altura'} <= set(self._preferencias.geometria_janela)
+        ),
+        notify=_Sinais.estadoMudou,
+    )
+    janelaX = Property(int, lambda self: self._preferencias.geometria_janela.get('x', 0), notify=_Sinais.estadoMudou)
+    janelaY = Property(int, lambda self: self._preferencias.geometria_janela.get('y', 0), notify=_Sinais.estadoMudou)
+    janelaLargura = Property(
+        int, lambda self: self._preferencias.geometria_janela.get('largura', 0), notify=_Sinais.estadoMudou
+    )
+    janelaAltura = Property(
+        int, lambda self: self._preferencias.geometria_janela.get('altura', 0), notify=_Sinais.estadoMudou
+    )
+
+    @Slot(bool)
+    def definirLembrarGeometriaJanela(self, valor: bool) -> None:
+        if bool(valor) == self._preferencias.lembrar_geometria_janela:
+            return
+        self._preferencias.lembrar_geometria_janela = bool(valor)
+        if not valor:
+            # Descarta o que já estava guardado: manter a geometria antiga faria a opção
+            # parecer que não funcionou quando fosse religada meses depois.
+            self._preferencias.geometria_janela = {}
+        self._salvar_preferencias()
+        self.estadoMudou.emit()
+
+    @Slot(bool)
+    def definirIniciarEmTelaCheia(self, valor: bool) -> None:
+        if bool(valor) == self._preferencias.iniciar_em_tela_cheia:
+            return
+        self._preferencias.iniciar_em_tela_cheia = bool(valor)
+        self._salvar_preferencias()
+        self.estadoMudou.emit()
+
+    @Slot(bool)
+    def definirMostrarSeloExposicao(self, valor: bool) -> None:
+        if bool(valor) == self._preferencias.mostrar_selo_exposicao:
+            return
+        self._preferencias.mostrar_selo_exposicao = bool(valor)
+        self._salvar_preferencias()
+        self.estadoMudou.emit()
+
+    @Slot(int, int, int, int)
+    def salvarGeometriaJanela(self, x: int, y: int, largura: int, altura: int) -> None:
+        """Guarda a geometria da janela. Chamado pela view a cada mover/redimensionar.
+
+        Passa pelo debounce em vez de gravar direto: arrastar a janela dispara isto dezenas
+        de vezes por segundo.
+        """
+        if not self._preferencias.lembrar_geometria_janela:
+            return
+        nova = {'x': int(x), 'y': int(y), 'largura': int(largura), 'altura': int(altura)}
+        if nova == self._preferencias.geometria_janela:
+            return
+        self._preferencias.geometria_janela = nova
+        self._agendar_gravacao_de_preferencias()
 
     # ---- encerramento -------------------------------------------------------
     @Slot()
