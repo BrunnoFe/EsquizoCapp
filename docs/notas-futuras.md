@@ -4,6 +4,25 @@ Ideias levantadas e **deliberadamente adiadas**. Não são compromissos, e nenhu
 implementada. Estão aqui para não se perderem e para que quem encontrar o assunto no código
 saiba que já foi pensado.
 
+## Tela cheia iniciada pelo sistema operacional dessincroniza o estado
+
+Quem manda em tela cheia é o `controller.telaCheia`; a janela só espelha, pelo `Connections`
+em `EsquizoCapView.qml`. O caminho de volta não existe: `onVisibilityChanged: {}` é um stub
+vazio. Se o usuário sair da tela cheia por meio do SO (duplo clique na barra, atalho do gestor
+de janelas, F11 do compositor), a janela restaura mas `telaCheia` continua `true` — e o rail,
+o topbar e a barra de transporte seguem escondidos numa janela normal.
+
+Não foi corrigido junto com o ESC porque fechar o laço exige cuidado: reagir a
+`visibilityChanged` chamando `alternarTelaCheia()` cria recursão com o próprio espelho, que
+por sua vez chama `showFullScreen()`/`showNormal()`. Precisa comparar antes de agir, e o teste
+disso pede janela de verdade.
+
+## O botão "Sobre" não faz nada
+
+O `RailButton { glyph: "i"; tip: "Sobre" }` no rail não tem `onClicked`. Clicar não produz
+efeito nenhum e nem erro. Falta decidir o que ele mostraria (versão, licença, créditos) e onde
+— provavelmente mais uma aba em `JanelaConfiguracoes`, não uma janela nova.
+
 ## Seletor de tipo de sensor
 
 Hoje a conversão ADU→unidade física assume **sempre EEG**. O BITalino aceita outros sensores

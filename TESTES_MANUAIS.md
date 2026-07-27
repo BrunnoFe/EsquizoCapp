@@ -191,3 +191,24 @@ terminal — com ela definida os controles ficam travados de propósito.
 8. Com o BITalino conectado, tente ligar a simulação: deve **recusar** e explicar o motivo.
 9. Feche e reabra o app: as escolhas de simulação e os sliders de aparência devem voltar
    como estavam (gravados em `settings/preferencias.json`).
+
+## 6. Rail: alternância dos painéis, ESC e desenho dos ícones
+
+**Quando:** ao mexer no rail de `EsquizoCapView.qml`, no `IconGlyph` ou nos atalhos.
+
+**Por que exige janela:** a suíte confirma que cada `iconName` desenha uma forma
+(`tests/interface/test_icones.py`) e que `alternarTelaCheia()` vai e volta, mas nada disso
+diz se o ícone ficou **legível** em 18 px nem se o clique chega ao botão certo. Não há
+hardware envolvido — basta abrir o app, com `ESQUIZOCAP_FAKE=tudo` se preferir.
+
+1. Clique **Setup / hardware** duas vezes: abre e fecha no mesmo ícone. Idem **Aparência**.
+2. Com o Setup aberto, clique **Aparência**: o Setup fecha e a Aparência abre. Os dois
+   **nunca** ficam visíveis ao mesmo tempo — antes disso era possível, porque o rail continua
+   clicável atrás do backdrop.
+3. Com um painel aberto e o app em tela cheia, aperte **ESC**: fecha o painel e **continua**
+   em tela cheia. Aperte ESC de novo: aí sim sai da tela cheia. Um ESC nunca desfaz os dois.
+4. Fora da tela cheia, ESC sem painel aberto não deve fazer nada.
+5. Olhe os quatro ícones do rail lado a lado — plugue, gota, expandir, engrenagem. Todos são
+   vetores de traço 2 px agora; se algum parecer mais grosso, mais fino ou fora de centro que
+   os vizinhos, é o desenho no `IconGlyph`, não a fonte do sistema.
+6. Confira o mesmo em monitor com escala 125%/150%, onde traço de 2 px costuma borrar.

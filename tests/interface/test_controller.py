@@ -635,6 +635,16 @@ class TestPersistenciaDasPreferencias:
         assert controlador._selecao.gravar_aquisicao is True
         assert controlador.telaCheia is True
 
+    def test_alternar_tela_cheia_vai_e_volta(self, controlador_sem_variavel: ConstrutorDeControlador) -> None:
+        """O ESC e o F11 do QML chamam isto; a janela só espelha `telaCheia`."""
+        controlador = controlador_sem_variavel(Preferencias(iniciar_em_tela_cheia=False))
+
+        controlador.alternarTelaCheia()
+        assert controlador.telaCheia is True
+
+        controlador.alternarTelaCheia()
+        assert controlador.telaCheia is False
+
     def test_nivel_de_log_salvo_e_aplicado_no_arranque(self, controlador_sem_variavel: ConstrutorDeControlador) -> None:
         controlador = controlador_sem_variavel(Preferencias(nivel_log='DEBUG'))
 

@@ -97,10 +97,12 @@ ApplicationWindow {
             anchors.topMargin: 16; anchors.bottomMargin: 16
             spacing: 20
 
-            // engrenagem — setup/hardware
-            RailButton { glyph: "⚙"; tip: "Setup / hardware"
+            // plugue — setup/hardware
+            // fecha o painel vizinho antes de alternar o próprio: o rail continua
+            // clicável atrás do backdrop, então sem isso os dois ficam abertos.
+            RailButton { iconName: "plugue"; tip: "Setup / hardware"
                 Layout.alignment: Qt.AlignHCenter
-                onClicked: setupPanel.open = true }
+                onClicked: { settingsPanel.open = false; setupPanel.open = !setupPanel.open } }
 
             // status do hardware (o LSL não é mais exibido)
             ColumnLayout {
@@ -116,11 +118,11 @@ ApplicationWindow {
             // configurações do app / tela cheia / sobre
             ColumnLayout {
                 spacing: 12; Layout.alignment: Qt.AlignHCenter
-                RailButton { iconName: "sliders"; tip: "Aparência"; small: true
-                    onClicked: settingsPanel.open = true }
+                RailButton { iconName: "gota"; tip: "Aparência"; small: true
+                    onClicked: { setupPanel.open = false; settingsPanel.open = !settingsPanel.open } }
                 RailButton { iconName: "expand"; tip: "Modo tela cheia"; small: true
                     onClicked: controller.alternarTelaCheia() }
-                RailButton { glyph: "☰"; tip: "Configurações"; small: true
+                RailButton { iconName: "engrenagem"; tip: "Configurações"; small: true
                     onClicked: janelaConfiguracoes.open = true }
                 RailButton { glyph: "i"; tip: "Sobre"; small: true; italic: true }
             }
@@ -790,9 +792,18 @@ ApplicationWindow {
         JanelaConfiguracoes { id: janelaConfiguracoes; z: 15 }
     }
 
-    // fecha painéis com ESC / alterna tela cheia com F11
+    // ESC em camadas: primeiro fecha o que estiver aberto, e só então sai da tela
+    // cheia — um ESC nunca desfaz dois estados de uma vez. F11 sempre alterna.
+    // Quem manda em tela cheia é o controller; a janela só espelha (ver Connections
+    // abaixo), então nada de win.showNormal() aqui, que dessincronizaria o estado.
     Shortcut { sequence: "Escape"
-        onActivated: { setupPanel.open=false; settingsPanel.open=false; janelaConfiguracoes.open=false } }
+        onActivated: {
+            if (setupPanel.open || settingsPanel.open || janelaConfiguracoes.open) {
+                setupPanel.open = false; settingsPanel.open = false; janelaConfiguracoes.open = false
+            } else if (controller.telaCheia) {
+                controller.alternarTelaCheia()
+            }
+        } }
     Shortcut { sequence: "F11"; onActivated: controller.alternarTelaCheia() }
     onVisibilityChanged: {}
     Connections { target: controller
