@@ -19,6 +19,7 @@ dependencies = [
     "pyserial",
     "scikit-learn",
     "scipy",
+    "requests>=2.34.2",
 ]
 
 [project.optional-dependencies]

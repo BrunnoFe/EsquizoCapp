@@ -196,3 +196,6 @@ docs/adr
 
 # Preferências gravadas pelo app: estado da máquina de quem roda, não do projeto.
 settings/preferencias.json
+
+#nextcloud
+.sync*
