@@ -249,3 +249,25 @@ hardware envolvido — basta abrir o app, com `ESQUIZOCAP_FAKE=tudo` se preferir
    vetores de traço 2 px agora; se algum parecer mais grosso, mais fino ou fora de centro que
    os vizinhos, é o desenho no `IconGlyph`, não a fonte do sistema.
 6. Confira o mesmo em monitor com escala 125%/150%, onde traço de 2 px costuma borrar.
+
+## 8. Tela de carregamento no boot
+
+**Quando:** ao mexer em `Layout/TelaDeCarregamento.qml`, em `Base/LogoSpinner.qml` ou no
+bloco `// PROVISÓRIO:` de `EsquizoCapView.qml`.
+
+**Por que exige janela:** a carga offscreen prova que o QML instancia sem aviso, mas não diz
+se a onda **percorre** o anel nem se a saída desacelera em vez de cortar. Animação só se
+julga vendo. Não há hardware envolvido — `ESQUIZOCAP_FAKE=tudo` serve.
+
+1. `python main.py`: o app deve abrir **já na tela de carregamento**, opaca, sem a interface
+   aparecendo atrás dela.
+2. Olhe o anel: uma onda de tamanho percorre os 12 LEDs em **sentido horário**, e a cor gira
+   junto. O movimento não pode parecer um loop curto se repetindo.
+3. A linha de status ("carregando") pulsa de opacidade, devagar.
+4. Depois de ~2,2 s a tela sai: a onda **desacelera** até quase parar, com o pico no topo, e
+   só então o overlay some. Se ela sumir com a onda ainda em velocidade normal, o corte está
+   acontecendo no meio — regressão.
+5. Já na interface normal, abra e feche **Configurações** (e o painel de Setup): a tela de
+   carregamento **não pode reaparecer**. Ela é de boot, uma vez só.
+6. Confira que o wordmark "esquizocap" da tela usa a mesma tipografia da barra de título, com
+   o "cap" em teal.

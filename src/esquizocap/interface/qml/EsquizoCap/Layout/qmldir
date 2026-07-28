@@ -1,3 +1,4 @@
 module EsquizoCap.Layout
 SlidePanel 1.0 SlidePanel.qml
 SettingsCard 1.0 SettingsCard.qml
+TelaDeCarregamento 1.0 TelaDeCarregamento.qml

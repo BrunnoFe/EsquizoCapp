@@ -840,6 +840,30 @@ ApplicationWindow {
             onRespondida: (papel) => controller.responderCaixa(papel)
             onDispensada: controller.fecharCaixa()
         }
+
+        // ============ TELA DE CARREGAMENTO ============
+        // Último filho do shell, para herdar os cantos arredondados como os demais overlays.
+        // z: 35 — acima de todo o conteúdo, dos painéis deslizantes (8/9), da janela de
+        // configurações (15) e da borda de simulação (30), mas ABAIXO do Toast (40) e da
+        // CaixaDeMensagem (41): se o boot falhar, o erro precisa aparecer SOBRE a tela de
+        // carregamento, nunca escondido atrás dela.
+        TelaDeCarregamento {
+            id: telaDeCarregamento
+            z: 35
+            aberta: true
+
+            // PROVISÓRIO: a tela é decorativa — nasce aberta e um Timer a fecha depois de um
+            // tempo fixo, sem relação alguma com carregamento real. Para ligar de verdade:
+            // apague este bloco inteiro, troque por `aberta: controller.<propriedadeDeCarregamento>`
+            // e alimente `mensagem` com o status real vindo do controller.
+            mensagem: "carregando"
+            Timer {
+                id: fecharTelaDeCarregamento
+                interval: 2200
+                onTriggered: telaDeCarregamento.aberta = false
+            }
+            Component.onCompleted: fecharTelaDeCarregamento.start()
+        }
     }
 
     // ESC em camadas: primeiro fecha o que estiver aberto, e só então sai da tela

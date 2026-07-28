@@ -2,5 +2,6 @@ module EsquizoCap.Base
 singleton Theme 1.0 Theme.qml
 IconGlyph 1.0 IconGlyph.qml
 LogoMark 1.0 LogoMark.qml
+LogoSpinner 1.0 LogoSpinner.qml
 StatusDot 1.0 StatusDot.qml
 Chip 1.0 Chip.qml

@@ -189,3 +189,17 @@ o eletrodo é físico, e negar a leitura de quem plugou no A5 é pior do que avi
 Do datasheet do sensor. Gamma (30–45 Hz) passa bem, mas **a parte de baixo de Delta (0,5–4 Hz)
 é cortada pelo próprio hardware**. A banda Delta exibida na interface, portanto, nunca é
 observada por inteiro. Vale checar se isso enviesa a predição no modo Frequência.
+
+## Tela de carregamento ligada ao carregamento de verdade
+
+`Layout/TelaDeCarregamento.qml` já existe e aparece no boot, mas é **decorativa**: o gatilho
+é um `Timer` de 2200 ms marcado com `// PROVISÓRIO:` em `EsquizoCapView.qml`, e a linha de
+status mostra um texto neutro ("carregando") que não afirma nada sobre o que está sendo feito.
+Falta (a) decidir o que de fato é carregado no boot e vale ser medido, (b) expor isso no
+`controller.py` como propriedade, e (c) trocar o Timer por `aberta: controller.<essa
+propriedade>`, alimentando `mensagem` com o status real.
+
+O detalhe que decide o desenho: o **modelo é carregado em `main.py` ANTES de a janela
+existir**, então hoje a tela nem chega a estar de pé enquanto ele sobe. Cobrir essa etapa
+exige mover o carregamento para depois do `engine.load` — mudança de ordem de inicialização,
+com risco próprio, e por isso deliberadamente fora da sessão que construiu a tela.
