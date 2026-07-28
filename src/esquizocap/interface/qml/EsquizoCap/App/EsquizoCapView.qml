@@ -217,8 +217,15 @@ ApplicationWindow {
                       topMargin: 20; leftMargin: 22; rightMargin: 22 }
             spacing: 12
 
-            LogoMark {}
-            Text { text: "esquizo"; color: "#f0eef2"; font.pixelSize: 18; font.bold: true
+            // Quadrado, ao contrário da marca antiga (barras alinhadas à base): centraliza
+            // na vertical para casar com a linha de base do wordmark ao lado.
+            LogoMark {
+                size: 26
+                spin: !controller.adquirindo
+                liveHue: controller.adquirindo ? controller.corAoVivo.hslHue * 360 : -1
+                Layout.alignment: Qt.AlignVCenter
+            }
+            Text { text: "esquizo"; color: "#f0eef2"; font.pixelSize: 22; font.bold: true
                 Text { text: "cap"; color: teal; font: parent.font; anchors.left: parent.right } }
 
             Item { Layout.fillWidth: true }

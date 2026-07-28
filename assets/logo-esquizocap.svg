@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" role="img" aria-label="EsquizoCap">
+  <title>EsquizoCap</title>
+  <!-- Variante para fundo escuro. 12 LEDs percorrendo a roda de matiz (S=62%, L=57%). -->
+  <circle cx="60" cy="16" r="7.5" fill="#4dc8d5"/>
+  <circle cx="82" cy="21.9" r="7" fill="#4dd5a8"/>
+  <circle cx="98.1" cy="38" r="6.5" fill="#4dd54d"/>
+  <circle cx="104" cy="60" r="6" fill="#b1d54d"/>
+  <circle cx="98.1" cy="82" r="5.5" fill="#d5b14d"/>
+  <circle cx="82" cy="98.1" r="5" fill="#d57b4d"/>
+  <circle cx="60" cy="104" r="4.6" fill="#d54d64"/>
+  <circle cx="38" cy="98.1" r="4.6" fill="#d54da8"/>
+  <circle cx="21.9" cy="82" r="5" fill="#ba4dd5"/>
+  <circle cx="16" cy="60" r="5.5" fill="#7f4dd5"/>
+  <circle cx="21.9" cy="38" r="6.5" fill="#4d5fd5"/>
+  <circle cx="38" cy="21.9" r="7" fill="#4d9ad5"/>
+  <path d="M30 60 H40 L45.5 47 L52.5 73 L59 54 L65 65 L70 60 H90"
+        fill="none" stroke="#f0eef2" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

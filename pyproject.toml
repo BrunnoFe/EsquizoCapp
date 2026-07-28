@@ -23,7 +23,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["mypy", "pytest", "pytest-cov", "ruff"]
+# Pillow só serve ao `scripts/gerar_icones.py`, que é one-shot: o app não abre imagem em
+# tempo de execução, só o .ico já pronto da janela. Por isso não está em `dependencies`.
+dev = ["mypy", "Pillow", "pytest", "pytest-cov", "ruff"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

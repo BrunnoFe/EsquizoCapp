@@ -28,6 +28,14 @@ QtObject {
     // o fundo quase-preto sem gritar. Entrou com as severidades de aviso.
     readonly property color ambar: "#e0a33a"
 
+    // ---- marca ----
+    // A roda de matiz da LogoMark: 12 LEDs percorrendo o círculo inteiro sem repetir cor.
+    // NÃO é paleta de interface — nada além da marca deve usar estes valores. O anel
+    // representa a fita de LED, e a roda representa o espaço HSV que o modelo prevê.
+    readonly property var logoHues: [186, 160, 120, 76, 44, 20, 350, 320, 288, 262, 232, 206]
+    readonly property real logoSat: 0.62
+    readonly property real logoLum: 0.57
+
     // ---- tipografia ----
     readonly property int fontPx: 13
     readonly property string monoFam: "Consolas, 'IBM Plex Mono', monospace"
