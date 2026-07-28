@@ -77,6 +77,12 @@ class PapelAcao(Enum):
     CANCELAR = 'cancelar'
     """Sair sem decidir. É o papel que o ESC e o X acionam, quando existe."""
 
+    DESFAZER = 'desfazer'
+    """Reverter o que a mensagem está anunciando.
+
+    Só faz sentido num toast: a caixa modal aparece ANTES do fato, o toast aparece depois.
+    Ignorá-lo (deixar o toast expirar) confirma a ação."""
+
 
 @unique
 class Situacao(Enum):
@@ -99,6 +105,11 @@ class Situacao(Enum):
     LOG_INACESSIVEL = 'log_inacessivel'
     ERRO_INESPERADO_NA_AQUISICAO = 'erro_inesperado_na_aquisicao'
     FALHA_INESPERADA = 'falha_inesperada'
+    APARENCIA_RESTAURADA = 'aparencia_restaurada'
+    """Único caso do catálogo em que nada deu errado.
+
+    Está aqui porque `EspecificacaoCaixa` é o contrato de qualquer mensagem do app, e não
+    só das ruins — manter um segundo caminho paralelo para confirmações seria pior."""
 
 
 @dataclass(frozen=True)
@@ -405,3 +416,24 @@ def falha_inesperada(erro: BaseException) -> EspecificacaoCaixa:
         ),
         dispensavel=False,
     ).com_detalhe(erro)
+
+
+# ---- confirmações -----------------------------------------------------------------
+
+
+ACAO_DESFAZER = Acao(papel=PapelAcao.DESFAZER, rotulo='Desfazer')
+
+
+def aparencia_restaurada(secao: str) -> EspecificacaoCaixa:
+    """Confirma que uma seção do painel de aparência voltou à fábrica, oferecendo o desfazer.
+
+    O toast é a única rede de segurança deste gesto — não há diálogo antes, de propósito:
+    um modal na frente da projeção durante a exposição custa mais do que o clique errado.
+    """
+    return _caixa(
+        situacao=Situacao.APARENCIA_RESTAURADA,
+        severidade=Severidade.INFO,
+        titulo=f'{secao} restaurado',
+        mensagem='Os controles desta seção voltaram aos valores de fábrica.',
+        acoes=(ACAO_DESFAZER,),
+    )

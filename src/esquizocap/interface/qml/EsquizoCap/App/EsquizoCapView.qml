@@ -716,6 +716,9 @@ ApplicationWindow {
             content: ColumnLayout {
                 width: parent.width; spacing: 14
                 SettingsCard { title: "Fitas de LED"
+                    secao: "leds"
+                    podeResetar: controller.secoesAparenciaModificadas.indexOf("leds") !== -1
+                    onResetSolicitado: controller.restaurarSecaoAparencia("leds")
                     body: ColumnLayout { width: parent.width; spacing: 13
                         SetSlider { label: "Nº de LEDs por fita"; from: 6; to: 120; step: 2
                             value: controller.quantidadeLeds; readout: controller.quantidadeLeds
@@ -730,6 +733,9 @@ ApplicationWindow {
                             value: controller.espacamentoLedsPx; readout: controller.espacamentoLedsPx + " px"
                             onMoved: controller.espacamentoLedsPx = value } } }
                 SettingsCard { title: "Animação & feel"
+                    secao: "animacao"
+                    podeResetar: controller.secoesAparenciaModificadas.indexOf("animacao") !== -1
+                    onResetSolicitado: controller.restaurarSecaoAparencia("animacao")
                     body: ColumnLayout { width: parent.width; spacing: 13
                         SetSlider { label: "Tamanho do círculo"; from: 200; to: 380; step: 4
                             value: controller.tamanhoOrbita; readout: controller.tamanhoOrbita + " px"
@@ -759,6 +765,9 @@ ApplicationWindow {
                             value: controller.duracaoTransicaoCorSegundos; readout: controller.duracaoTransicaoCorSegundos.toFixed(2) + " s"
                             onMoved: controller.duracaoTransicaoCorSegundos = value } } }
                 SettingsCard { title: "Gráfico em tempo real"
+                    secao: "grafico"
+                    podeResetar: controller.secoesAparenciaModificadas.indexOf("grafico") !== -1
+                    onResetSolicitado: controller.restaurarSecaoAparencia("grafico")
                     body: ColumnLayout { width: parent.width; spacing: 13
                         SetSlider { label: "Escala do eixo Y"; from: 20; to: 300; step: 10
                             value: controller.escalaEixoYMicroVolts; readout: "±" + controller.escalaEixoYMicroVolts + " µV"
@@ -806,7 +815,9 @@ ApplicationWindow {
             titulo: controller.toastTitulo
             mensagem: controller.toastMensagem
             identidade: controller.toastSituacao
+            textoAcao: controller.toastAcaoRotulo
             onDispensado: controller.fecharToast()
+            onAcaoAcionada: controller.acionarAcaoDoToast()
         }
 
         CaixaDeMensagem {

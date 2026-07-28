@@ -5,7 +5,7 @@ Nada aqui influencia o sinal, o modelo ou o Arduino — são só os controles do
 "Aparência", ajustáveis ao vivo pelo usuário para o gosto da instalação artística.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 
 from esquizocap.interface.constantes import LimiteNumerico
 
@@ -52,3 +52,58 @@ LIMITES_APARENCIA_VISUAL: dict[str, LimiteNumerico] = {
 }
 """Faixa válida para cada campo de `AparenciaVisual`, na mesma ordem — usada pelos
 setters do controller para não deixar o usuário arrastar um slider a um valor absurdo."""
+
+
+SECAO_APARENCIA_TUDO = 'tudo'
+"""Chave da pseudo-seção que abrange os 16 campos, usada pelo botão global da aba Interface.
+
+Existe para que o reset global passe pelo mesmo slot — e portanto ganhe o mesmo desfazer —
+que os botões de seção, em vez de ser um caminho paralelo sem rede."""
+
+SECOES_APARENCIA: dict[str, tuple[str, ...]] = {
+    'leds': (
+        'quantidade_leds',
+        'quantidade_fitas',
+        'brilho_leds_px',
+        'espacamento_leds_px',
+    ),
+    'animacao': (
+        'tamanho_orbita',
+        'intensidade_glow',
+        'velocidade_anel_segundos',
+        'largura_anel_px',
+        'velocidade_pulso_segundos',
+        'amplitude_pulso_percentual',
+        'largura_traco_eeg',
+        'opacidade_traco_eeg_percentual',
+        'duracao_transicao_cor_segundos',
+    ),
+    'grafico': (
+        'escala_eixo_y_microvolts',
+        'janela_grafico_segundos',
+        'velocidade_animacao_segundos',
+    ),
+    SECAO_APARENCIA_TUDO: tuple(campo.name for campo in fields(AparenciaVisual)),
+}
+"""Quais campos cada botão "Resetar" do painel de aparência devolve à fábrica.
+
+As três primeiras chaves espelham, uma a uma, os três `SettingsCard` do painel lateral
+direito (`EsquizoCapView.qml`), e `tests/interface/test_estado.py` garante que juntas
+cobrem os 16 campos sem sobreposição — um slider novo que ninguém mapeie aqui faz o teste
+falhar em vez de ficar de fora do reset em silêncio.
+
+O que o teste NÃO alcança é a correspondência visual: mover um `SetSlider` de um card para
+outro no QML sem atualizar este mapa deixa o botão resetando um campo que não está à vista.
+Foi um risco aceito conscientemente — esse erro é cometido de olho no painel, então aparece
+na hora."""
+
+ROTULOS_DAS_SECOES_APARENCIA: dict[str, str] = {
+    'leds': 'Fitas de LED',
+    'animacao': 'Animação & feel',
+    'grafico': 'Gráfico em tempo real',
+    SECAO_APARENCIA_TUDO: 'Aparência',
+}
+"""Como cada seção se chama no toast de confirmação.
+
+São os títulos dos cards, repetidos: o toast diz "Fitas de LED restaurado" e precisa falar
+a mesma língua do card que foi clicado."""

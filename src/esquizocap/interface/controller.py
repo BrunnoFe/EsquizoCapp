@@ -47,7 +47,7 @@ from PySide6.QtGui import QColor, QDesktopServices, QGuiApplication
 
 from esquizocap import hardware
 from esquizocap.aplicacao import EventoErro, EventoParado, EventoResultado, ServicoAquisicao, catalogo_erros
-from esquizocap.aplicacao.catalogo_erros import EspecificacaoCaixa
+from esquizocap.aplicacao.catalogo_erros import EspecificacaoCaixa, PapelAcao
 from esquizocap.dominio.ciclo_aquisicao import CicloAquisicao, ControlesUsuario, ModoAnalise, ResultadoCiclo
 from esquizocap.dominio.predicao import ModeloPreditor
 from esquizocap.hardware import constantes, portas_bluetooth
@@ -86,7 +86,13 @@ from esquizocap.interface.estado import (
     taxas_selecionaveis,
 )
 from esquizocap.interface.estado.ao_vivo import LeituraAoVivo
-from esquizocap.interface.estado.aparencia_visual import LIMITES_APARENCIA_VISUAL, AparenciaVisual
+from esquizocap.interface.estado.aparencia_visual import (
+    LIMITES_APARENCIA_VISUAL,
+    ROTULOS_DAS_SECOES_APARENCIA,
+    SECAO_APARENCIA_TUDO,
+    SECOES_APARENCIA,
+    AparenciaVisual,
+)
 from esquizocap.interface.estado.conexoes_hardware import EstadoConexoesHardware
 from esquizocap.interface.estado.configuracao import ConfiguracaoSelecionada, criar_configuracao_inicial
 from esquizocap.interface.ponte.conexao_bitalino_assincrona import ConectorBitalinoAssincrono
@@ -789,6 +795,11 @@ class EsquizoController(
         # apagar uma caixa que ainda não foi lida, nem vice-versa.
         self._caixa_atual: EspecificacaoCaixa | None = None
         self._toast_atual: EspecificacaoCaixa | None = None
+        self._desfazer_aparencia: tuple[str, dict[str, float]] | None = None
+        """A seção restaurada por último e os valores que ela tinha antes.
+
+        Um só, e não uma pilha: o gesto que está na cabeça de quem opera é o mais recente,
+        e histórico de desfazer num painel cosmético custa mais do que resolve."""
         self._continuacao_apos_conectar_bitalino: Callable[[], None] | None = None
         self._conectando_bitalino: bool = False
         """Ligado enquanto a thread de conexão roda.
@@ -1059,12 +1070,84 @@ class EsquizoController(
         self._salvar_preferencias()
         self.estadoMudou.emit()
 
+    # ---- reset da aparência ------------------------------------------------
+    # Um único caminho para os quatro botões (três seções + o global da aba Interface), e a
+    # razão é a rede: o desfazer nasce no slot, então nenhum gesto de reset pode existir sem
+    # ele. Um segundo caminho paralelo deixaria justamente o mais destrutivo desprotegido.
+    @Slot(str)
+    def restaurarSecaoAparencia(self, secao: str) -> None:
+        """Devolve os controles de uma seção do painel "Aparência" aos valores de fábrica.
+
+        Guarda o estado anterior para o "Desfazer" do toast. Chave desconhecida é logada e
+        ignorada, na mesma política tolerante de `_aparencia_das_preferencias`: preferência
+        cosmética não derruba a app.
+        """
+        campos = SECOES_APARENCIA.get(secao)
+        if campos is None:
+            logger.warning(f'Pedido de restauração de uma seção de aparência desconhecida: "{secao}".')
+            return
+
+        padrao = AparenciaVisual()
+        anterior = {campo: getattr(self._aparencia, campo) for campo in campos}
+        if all(valor == getattr(padrao, campo) for campo, valor in anterior.items()):
+            return
+
+        for campo in campos:
+            setattr(self._aparencia, campo, getattr(padrao, campo))
+        self._desfazer_aparencia = (secao, anterior)
+        self._salvar_preferencias()
+        self._reportar(catalogo_erros.aparencia_restaurada(ROTULOS_DAS_SECOES_APARENCIA[secao]))
+        self._emitir_todos_os_sinais()
+
     @Slot()
     def restaurarAparenciaPadrao(self) -> None:
         """Devolve os 16 controles do painel "Aparência" aos valores de fábrica."""
-        self._aparencia = AparenciaVisual()
+        self.restaurarSecaoAparencia(SECAO_APARENCIA_TUDO)
+
+    @Slot()
+    def desfazerRestauracaoAparencia(self) -> None:
+        """Reaplica os valores que a última restauração jogou fora."""
+        if self._desfazer_aparencia is None:
+            return
+        _secao, anterior = self._desfazer_aparencia
+        self._desfazer_aparencia = None
+        for campo, valor in anterior.items():
+            setattr(self._aparencia, campo, valor)
         self._salvar_preferencias()
+        self._toast_atual = None
         self._emitir_todos_os_sinais()
+
+    def _descartar_desfazer_se_a_secao_foi_editada(self, atributo: str) -> None:
+        """Invalida o desfazer pendente quando o usuário mexe num controle da mesma seção.
+
+        Sem isto haveria sobrescrita silenciosa: restaurar "Animação", gostar do padrão mas
+        subir o glow para 1.4, e então clicar em "Desfazer" descartaria o 1.4 junto — sem
+        erro, sem aviso, só a instalação num estado que ninguém pediu. Editar uma seção é
+        uma decisão mais nova que a restauração, então ela vence.
+        """
+        if self._desfazer_aparencia is None:
+            return
+        secao, _anterior = self._desfazer_aparencia
+        if atributo not in SECOES_APARENCIA[secao]:
+            return
+        self._desfazer_aparencia = None
+        self._toast_atual = None
+
+    def _secoes_de_aparencia_modificadas(self) -> list[str]:
+        """As seções cujos valores diferem da fábrica — é o que acende os botões "Resetar".
+
+        Um botão esmaecido diz de relance "aqui você não mexeu", informação que hoje não
+        existe em lugar nenhum: um brilho em 6 pode ser o padrão ou um ajuste deliberado, e
+        a fita acende igual nos dois casos.
+        """
+        padrao = AparenciaVisual()
+        return [
+            secao
+            for secao, campos in SECOES_APARENCIA.items()
+            if any(getattr(self._aparencia, campo) != getattr(padrao, campo) for campo in campos)
+        ]
+
+    secoesAparenciaModificadas = Property('QStringList', _secoes_de_aparencia_modificadas, notify=_Sinais.estadoMudou)
 
     @Slot(str, bool)
     def definirSimulacao(self, componente: str, ativo: bool) -> None:
@@ -1310,7 +1393,22 @@ class EsquizoController(
     )
     caixaAcoes = Property(list, lambda self: self._acoes_da_caixa(), notify=_Sinais.estadoMudou)
 
+    @Slot()
+    def acionarAcaoDoToast(self) -> None:
+        """Aciona o botão de ação do toast — hoje só existe o "Desfazer" da aparência.
+
+        Ramifica por papel, e não por rótulo, como a caixa modal já faz: quando um segundo
+        toast com ação aparecer, ele entra aqui sem que o QML precise saber o que a ação
+        significa.
+        """
+        if self._toast_atual is None:
+            return
+        papeis = {acao.papel for acao in self._toast_atual.acoes}
+        if PapelAcao.DESFAZER in papeis:
+            self.desfazerRestauracaoAparencia()
+
     toastAberto = Property(bool, lambda self: self._toast_atual is not None, notify=_Sinais.estadoMudou)
+    toastAcaoRotulo = Property(str, lambda self: self._rotulo_da_acao_do_toast(), notify=_Sinais.estadoMudou)
     toastSituacao = Property(str, lambda self: self._campo_do_toast('situacao'), notify=_Sinais.estadoMudou)
     toastSeveridade = Property(str, lambda self: self._campo_do_toast('severidade'), notify=_Sinais.estadoMudou)
     toastTitulo = Property(str, lambda self: self._campo_do_toast('titulo'), notify=_Sinais.estadoMudou)
@@ -1332,6 +1430,17 @@ class EsquizoController(
 
     def _campo_do_toast(self, campo: str) -> str:
         return self._texto_do_campo(self._toast_atual, campo)
+
+    def _rotulo_da_acao_do_toast(self) -> str:
+        """O rótulo do botão de ação do toast, ou vazio quando ele não tem ação.
+
+        Só ações de papel `DESFAZER` viram botão aqui, e não é detalhe: toda entrada do
+        catálogo ganha um `ACAO_OK` por padrão, então aceitar qualquer papel poria um botão
+        "OK" inútil em cada recado de ferramenta que já existe.
+        """
+        if self._toast_atual is None:
+            return ''
+        return next((acao.rotulo for acao in self._toast_atual.acoes if acao.papel is PapelAcao.DESFAZER), '')
 
     def _acoes_da_caixa(self) -> list[dict[str, str]]:
         """Os botões, como dicionários simples — é o que atravessa para o QML."""
@@ -1638,6 +1747,7 @@ class EsquizoController(
             self._servico.atualizar_controles(self._controles_usuario_atuais())
         if dono is self._aparencia:
             self._agendar_gravacao_de_preferencias()
+            self._descartar_desfazer_se_a_secao_foi_editada(atributo)
         self._reavaliar_prontidao()
         self._emitir_todos_os_sinais()
 

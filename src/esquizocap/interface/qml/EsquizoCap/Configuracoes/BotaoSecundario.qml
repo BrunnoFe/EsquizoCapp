@@ -7,7 +7,11 @@ Button {
     property bool destrutivo: false
     implicitHeight: 34
     implicitWidth: Math.max(120, rotulo.implicitWidth + 28)
-    HoverHandler { cursorShape: Qt.PointingHandCursor }
+    // Sem isto, desabilitado fica idêntico a habilitado: o estilo inteiro deste botão é
+    // reação a hover, e um botão que não responde ao mouse simplesmente parece quebrado.
+    opacity: enabled ? 1 : 0.35
+    Behavior on opacity { NumberAnimation { duration: 150 } }
+    HoverHandler { cursorShape: botao.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor }
     background: Rectangle {
         radius: 8
         color: botao.hovered

@@ -23,13 +23,23 @@ NOME_INEXISTENTE = 'nao_existe_este_icone'
 TEMPO_LIMITE_SEGUNDOS = 120
 
 
+PADROES = (
+    re.compile(r'iconName:\s*"([^"]+)"'),
+    # Componentes que instanciam o `IconGlyph` direto, sem passar pelo `iconName` do
+    # RailButton. Sem este segundo padrão, um ícone usado só assim ficaria fora da
+    # cobertura — e "fora da cobertura" aqui significa um botão vazio que ninguém nota.
+    re.compile(r'IconGlyph\s*\{[^{}]*?\bname:\s*"([^"]+)"', re.DOTALL),
+)
+
+
 def _nomes_usados_no_qml() -> list[str]:
     nomes = {
         achado
         for arquivo in QML.rglob('*.qml')
-        for achado in re.findall(r'iconName:\s*"([^"]+)"', arquivo.read_text(encoding='utf-8'))
+        for padrao in PADROES
+        for achado in padrao.findall(arquivo.read_text(encoding='utf-8'))
     }
-    assert nomes, 'Nenhum iconName encontrado no QML — o padrão de busca ficou obsoleto.'
+    assert nomes, 'Nenhum ícone encontrado no QML — os padrões de busca ficaram obsoletos.'
     return sorted(nomes)
 
 

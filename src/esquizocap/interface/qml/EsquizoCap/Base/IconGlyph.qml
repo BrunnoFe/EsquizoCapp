@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Shapes
 
-// Ícones vetoriais desenhados (sliders, faders, expand, plugue, gota, engrenagem).
+// Ícones vetoriais desenhados (sliders, faders, expand, plugue, gota, engrenagem, recarregar).
 //
 // Todo ícone do rail vive aqui: um nome desconhecido não desenha nada e não
 // levanta erro, então tests/interface/test_icones.py cobre cada nome em uso.
@@ -62,6 +62,20 @@ Item {
             PathArc { x: 4.5; y: 10.5; radiusX: 6.4; radiusY: 6.4
                 direction: PathArc.Clockwise; useLargeArc: true }
             PathLine { x: 9; y: 3 } }
+    }
+    // recarregar (resetar seção): arco quase fechado + farpa da seta na ponta de cima
+    //
+    // A abertura no topo é o que faz o desenho ler como "volta ao começo" e não como um
+    // círculo qualquer. Um único Shape porque test_icones conta formas e exige exatamente 1.
+    Shape { visible: g.name === "recarregar"; anchors.fill: parent
+        ShapePath { strokeColor: g.color; strokeWidth: 2; fillColor: "transparent"; capStyle: ShapePath.RoundCap
+            startX: 13.5; startY: 4.5
+            PathArc { x: 11.5; y: 3.6; radiusX: 6; radiusY: 6
+                direction: PathArc.Counterclockwise; useLargeArc: true } }
+        ShapePath { strokeColor: g.color; strokeWidth: 2; fillColor: "transparent"; capStyle: ShapePath.RoundCap; joinStyle: ShapePath.RoundJoin
+            startX: 13.8; startY: 1
+            PathLine { x: 13.8; y: 5 }
+            PathLine { x: 10; y: 5 } }
     }
     // engrenagem (configurações): miolo vazado + 6 dentes radiais
     // (8 dentes vira mancha em 18 px)

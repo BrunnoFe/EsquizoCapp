@@ -5,6 +5,8 @@ comparações de string dentro de um `after(10 ms)` da GUI: para testá-la seria
 abrir uma janela Tk e simular cliques. Agora é entrada -> saída.
 """
 
+import dataclasses
+
 import pytest
 
 from esquizocap.dominio.ciclo_aquisicao import ModoAnalise
@@ -27,9 +29,20 @@ from esquizocap.interface.estado import (
     rotulo_do_canal,
     taxas_selecionaveis,
 )
+from esquizocap.interface.estado.aparencia_visual import (
+    LIMITES_APARENCIA_VISUAL,
+    ROTULOS_DAS_SECOES_APARENCIA,
+    SECAO_APARENCIA_TUDO,
+    SECOES_APARENCIA,
+    AparenciaVisual,
+)
 
 MACS = ('20:17:09:18:60:29', '98:D3:B1:FD:3D:1F')
 MODELO = 'Preditor HSV baseado em Amplitude'
+
+TODOS_OS_CAMPOS_DA_APARENCIA = {campo.name for campo in dataclasses.fields(AparenciaVisual)}
+SECOES_VISIVEIS = tuple(secao for secao in SECOES_APARENCIA if secao != SECAO_APARENCIA_TUDO)
+"""As seções que correspondem a um card do painel — `tudo` é a pseudo-seção do botão global."""
 
 
 def selecao(**mudancas: object) -> SelecaoUsuario:
@@ -343,3 +356,39 @@ class TestAvisoDoCanal:
 def test_a_mensagem_de_aquisicao_diz_se_esta_gravando() -> None:
     assert 'gravando' in mensagem_de_aquisicao(gravando=True)
     assert 'gravando' not in mensagem_de_aquisicao(gravando=False)
+
+
+class TestSecoesAparencia:
+    """O mapa seção -> campos é a única fonte do que cada botão "Resetar" devolve à fábrica.
+
+    Nada aqui levanta exceção quando está errado: um campo esquecido no mapa simplesmente
+    não é resetado, e o painel fica num estado misto que ninguém pediu e ninguém percebe.
+    Estes testes são o que transforma esse silêncio em falha.
+    """
+
+    def test_as_tres_secoes_cobrem_todos_os_campos_da_aparencia(self) -> None:
+        """Pega o slider novo que entrou no dataclass e ninguém mapeou."""
+        mapeados = {campo for secao in SECOES_VISIVEIS for campo in SECOES_APARENCIA[secao]}
+
+        assert mapeados == TODOS_OS_CAMPOS_DA_APARENCIA
+
+    def test_as_tres_secoes_nao_se_sobrepoem(self) -> None:
+        """Um campo em duas seções faria dois botões diferentes mexerem no mesmo slider."""
+        total_com_repeticao = sum(len(SECOES_APARENCIA[secao]) for secao in SECOES_VISIVEIS)
+        distintos = {campo for secao in SECOES_VISIVEIS for campo in SECOES_APARENCIA[secao]}
+
+        assert total_com_repeticao == len(distintos)
+
+    def test_a_pseudo_secao_tudo_cobre_todos_os_campos(self) -> None:
+        assert set(SECOES_APARENCIA[SECAO_APARENCIA_TUDO]) == TODOS_OS_CAMPOS_DA_APARENCIA
+
+    def test_toda_secao_tem_rotulo(self) -> None:
+        """Um rótulo faltando viraria `KeyError` na hora do reset, com o painel aberto."""
+        assert set(ROTULOS_DAS_SECOES_APARENCIA) == set(SECOES_APARENCIA)
+
+    @pytest.mark.parametrize('secao', sorted(SECOES_APARENCIA))
+    def test_todo_campo_mapeado_existe_e_tem_limite(self, secao: str) -> None:
+        """Um typo no nome do campo resetaria um campo a menos, calado."""
+        for campo in SECOES_APARENCIA[secao]:
+            assert campo in TODOS_OS_CAMPOS_DA_APARENCIA, f'"{campo}" não é campo de AparenciaVisual.'
+            assert campo in LIMITES_APARENCIA_VISUAL, f'"{campo}" não tem faixa declarada.'

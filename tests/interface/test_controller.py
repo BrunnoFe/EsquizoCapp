@@ -30,6 +30,11 @@ from esquizocap.infraestrutura.config import Configuracao
 from esquizocap.infraestrutura.preferencias import Preferencias
 from esquizocap.interface.controller import EsquizoController
 from esquizocap.interface.estado import EstadoApp
+from esquizocap.interface.estado.aparencia_visual import (
+    ROTULOS_DAS_SECOES_APARENCIA,
+    SECAO_APARENCIA_TUDO,
+    AparenciaVisual,
+)
 
 MAC = '20:17:09:18:60:29'
 
@@ -847,3 +852,139 @@ class TestMensagensAoUsuario:
         controlador._reportar(catalogo_erros.falha_conexao_arduino(PermissionError('porta ocupada')))
 
         assert 'PermissionError' in controlador.caixaDetalhe
+
+    def test_um_recado_comum_nao_ganha_botao_de_acao(self, controlador: EsquizoController) -> None:
+        """Toda entrada do catálogo tem `ACAO_OK`; só `DESFAZER` pode virar botão no toast."""
+        controlador._reportar(catalogo_erros.sem_arquivo_de_log())
+
+        assert controlador.toastAcaoRotulo == ''
+
+
+class TestRestaurarSecaoDaAparencia:
+    """O reset por seção e sua única rede de segurança, o "Desfazer" do toast.
+
+    Nada aqui levanta exceção quando dá errado: um campo a menos restaurado, ou um ajuste
+    engolido pelo desfazer, produz uma instalação com a cor ligeiramente errada e nenhum
+    sinal na tela. Por isso os testes afirmam sobre os campos que NÃO deviam mudar tanto
+    quanto sobre os que deviam.
+    """
+
+    def test_restaurar_uma_secao_nao_toca_nas_outras(self, controlador: EsquizoController) -> None:
+        controlador.quantidadeLeds = 90
+        controlador.tamanhoOrbita = 250
+
+        controlador.restaurarSecaoAparencia('leds')
+
+        assert controlador.quantidadeLeds == AparenciaVisual().quantidade_leds
+        assert controlador.tamanhoOrbita == 250
+
+    def test_desfazer_devolve_exatamente_os_valores_anteriores(self, controlador: EsquizoController) -> None:
+        controlador.quantidadeLeds = 90
+        controlador.brilhoLedsPx = 12
+        controlador.restaurarSecaoAparencia('leds')
+
+        controlador.desfazerRestauracaoAparencia()
+
+        assert controlador.quantidadeLeds == 90
+        assert controlador.brilhoLedsPx == 12
+
+    def test_mexer_na_secao_restaurada_cancela_o_desfazer(self, controlador: EsquizoController) -> None:
+        """O cenário que motivou a invalidação: gostei do padrão, mas subi um valor depois.
+
+        Sem isto, o "Desfazer" jogaria fora o ajuste novo em silêncio.
+        """
+        controlador.quantidadeLeds = 90
+        controlador.restaurarSecaoAparencia('leds')
+
+        controlador.brilhoLedsPx = 14
+        controlador.desfazerRestauracaoAparencia()
+
+        assert controlador.brilhoLedsPx == 14
+        assert controlador.quantidadeLeds == AparenciaVisual().quantidade_leds
+        assert not controlador.toastAberto
+
+    def test_mexer_em_outra_secao_preserva_o_desfazer(self, controlador: EsquizoController) -> None:
+        controlador.quantidadeLeds = 90
+        controlador.restaurarSecaoAparencia('leds')
+
+        controlador.tamanhoOrbita = 250
+        controlador.desfazerRestauracaoAparencia()
+
+        assert controlador.quantidadeLeds == 90
+        assert controlador.tamanhoOrbita == 250
+
+    def test_restaurar_uma_secao_ja_padrao_nao_abre_toast(self, controlador: EsquizoController) -> None:
+        """Sem isto, o botão ofereceria desfazer um nada."""
+        controlador.restaurarSecaoAparencia('leds')
+
+        assert not controlador.toastAberto
+
+    def test_o_toast_oferece_desfazer_e_nomeia_a_secao(self, controlador: EsquizoController) -> None:
+        controlador.quantidadeLeds = 90
+
+        controlador.restaurarSecaoAparencia('leds')
+
+        assert controlador.toastAberto
+        assert controlador.toastAcaoRotulo == 'Desfazer'
+        assert ROTULOS_DAS_SECOES_APARENCIA['leds'] in controlador.toastTitulo
+
+    def test_a_acao_do_toast_desfaz(self, controlador: EsquizoController) -> None:
+        """O caminho que o QML de fato percorre: ele não conhece o slot de desfazer."""
+        controlador.quantidadeLeds = 90
+        controlador.restaurarSecaoAparencia('leds')
+
+        controlador.acionarAcaoDoToast()
+
+        assert controlador.quantidadeLeds == 90
+
+    def test_o_botao_global_passa_pelo_mesmo_caminho_e_tem_desfazer(self, controlador: EsquizoController) -> None:
+        controlador.quantidadeLeds = 90
+        controlador.tamanhoOrbita = 250
+
+        controlador.restaurarAparenciaPadrao()
+        assert controlador.tamanhoOrbita == AparenciaVisual().tamanho_orbita
+
+        controlador.desfazerRestauracaoAparencia()
+        assert controlador.quantidadeLeds == 90
+        assert controlador.tamanhoOrbita == 250
+
+    def test_uma_secao_desconhecida_e_ignorada_com_aviso(
+        self, controlador: EsquizoController, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        controlador.quantidadeLeds = 90
+
+        with caplog.at_level(logging.WARNING, logger='esquizocap'):
+            controlador.restaurarSecaoAparencia('secao_que_nao_existe')
+
+        assert controlador.quantidadeLeds == 90
+        assert 'secao_que_nao_existe' in caplog.text
+
+    def test_desfazer_sem_nada_pendente_nao_faz_nada(self, controlador: EsquizoController) -> None:
+        controlador.quantidadeLeds = 90
+
+        controlador.desfazerRestauracaoAparencia()
+
+        assert controlador.quantidadeLeds == 90
+
+
+class TestSecoesModificadas:
+    """O que esmaece os botões "Resetar"."""
+
+    def test_de_fabrica_nenhuma_secao_esta_modificada(self, controlador: EsquizoController) -> None:
+        assert controlador.secoesAparenciaModificadas == []
+
+    def test_um_unico_slider_acende_a_secao_dele_e_o_tudo(self, controlador: EsquizoController) -> None:
+        controlador.quantidadeLeds = 90
+
+        modificadas = controlador.secoesAparenciaModificadas
+
+        assert 'leds' in modificadas
+        assert SECAO_APARENCIA_TUDO in modificadas
+        assert 'animacao' not in modificadas
+
+    def test_restaurar_apaga_a_secao_da_lista(self, controlador: EsquizoController) -> None:
+        controlador.quantidadeLeds = 90
+
+        controlador.restaurarSecaoAparencia('leds')
+
+        assert 'leds' not in controlador.secoesAparenciaModificadas

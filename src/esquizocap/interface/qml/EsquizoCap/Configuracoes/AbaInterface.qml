@@ -55,13 +55,15 @@ ColumnLayout {
             spacing: 14
             Text {
                 Layout.fillWidth: true
-                text: "Os controles de aparência ficam no painel lateral direito (ícone de faders). "
-                    + "Os valores são guardados e voltam na próxima abertura."
+                text: "Os controles de aparência ficam no painel lateral direito (ícone de gota). "
+                    + "Os valores são guardados e voltam na próxima abertura, e cada seção "
+                    + "daquele painel tem seu próprio botão de restaurar."
                 color: "#8fa6ac"; font.pixelSize: 11; wrapMode: Text.WordWrap
             }
             BotaoSecundario {
                 text: "Restaurar aparência padrão"
                 destrutivo: true
+                enabled: controller.secoesAparenciaModificadas.indexOf("tudo") !== -1
                 onClicked: controller.restaurarAparenciaPadrao()
             }
         }

@@ -4,6 +4,24 @@ Ideias levantadas e **deliberadamente adiadas**. Não são compromissos, e nenhu
 implementada. Estão aqui para não se perderem e para que quem encontrar o assunto no código
 saiba que já foi pensado.
 
+## Presets de aparência nomeados
+
+A aparência tem hoje **dois** níveis: fábrica (os defaults de `AparenciaVisual`) e atual (o
+que está nos sliders, gravado sozinho em `preferencias.json` com um atraso deliberado). Não
+existe um terceiro — um ponto de retorno escolhido pelo operador.
+
+Surgiu a ideia de um botão "Salvar aparência". Descartada como está: a aparência **já**
+persiste automaticamente, então o botão seria um no-op decorado, e ainda sugeriria um estado
+"não salvo" inexistente.
+
+O que faria sentido é o passo maior: **presets nomeados** ("Galeria A", "Projetor da sala 2").
+Uma instalação itinerante troca de espaço, e cada espaço quer um ajuste de brilho e escala
+diferente. Um único slot anônimo — o meio-termo — paga o custo conceitual inteiro do terceiro
+nível (incluindo explicar num ícone de 14 px se o reset volta à fábrica ou ao salvo) e entrega
+justamente a parte que menos serve a esse caso de uso.
+
+Se for feito, é ticket próprio, com tela própria.
+
 ## Migrar os componentes QML antigos para o singleton `Theme`
 
 `Base/Theme.qml` nasceu com a caixa de mensagem (ver `docs/adr/0002-...`) e é hoje a única

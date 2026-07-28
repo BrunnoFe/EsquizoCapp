@@ -22,7 +22,12 @@ Item {
     property string identidade: ""
     property int duracaoMs: 7000
 
+    // Ação opcional ("Desfazer"). Vazio deixa o toast exatamente como sempre foi: quase
+    // todo recado é de ferramenta e só tem o "✕".
+    property string textoAcao: ""
+
     signal dispensado()
+    signal acaoAcionada()
 
     readonly property color destaque: Theme.corDaSeveridade(severidade)
 
@@ -101,6 +106,31 @@ Item {
                     lineHeight: 1.3
                     wrapMode: Text.WordWrap
                 }
+            }
+
+            Button {
+                id: acao
+                visible: toast.textoAcao !== ""
+                Layout.alignment: Qt.AlignVCenter
+                implicitWidth: rotuloAcao.implicitWidth + 18
+                implicitHeight: 24
+                padding: 0
+                HoverHandler { cursorShape: Qt.PointingHandCursor }
+                background: Rectangle {
+                    radius: 6
+                    color: acao.hovered ? Qt.rgba(toast.destaque.r, toast.destaque.g, toast.destaque.b, 0.18)
+                                        : Qt.rgba(1, 1, 1, 0.06)
+                    border.color: Qt.rgba(toast.destaque.r, toast.destaque.g, toast.destaque.b, 0.45)
+                    Behavior on color { ColorAnimation { duration: 150 } }
+                }
+                contentItem: Text {
+                    id: rotuloAcao
+                    text: toast.textoAcao
+                    color: "#e8f1f2"
+                    font.pixelSize: 12; font.bold: true; font.family: Theme.sansFam
+                    horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                }
+                onClicked: toast.acaoAcionada()
             }
 
             Button {
