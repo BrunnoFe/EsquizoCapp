@@ -27,6 +27,15 @@ Item {
         NumberAnimation { duration: Theme.duracaoEscala; easing.type: Easing.OutCubic }
     }
 
+    // A roda de matiz gira no mesmo sentido, num ciclo mais lento e que NÃO é múltiplo do
+    // da onda — a combinação nunca se repete igual. Na saída desacelera no mesmo fator (5×)
+    // que a onda, para que a marca inteira assente junto em vez de a cor continuar girando
+    // sobre um anel já parado.
+    property int cicloDoMatiz: aberta ? 7000 : 35000
+    Behavior on cicloDoMatiz {
+        NumberAnimation { duration: Theme.duracaoEscala; easing.type: Easing.OutCubic }
+    }
+
     opacity: aberta ? 1 : 0
     Behavior on opacity {
         SequentialAnimation {
@@ -63,6 +72,7 @@ Item {
             anchors.horizontalCenter: parent.horizontalCenter
             size: 168
             cycle: tela.cicloDaOnda
+            hueCycle: tela.cicloDoMatiz
             spread: 0.85
             running: tela.visible
         }

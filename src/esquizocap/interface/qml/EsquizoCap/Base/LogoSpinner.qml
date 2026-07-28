@@ -2,16 +2,23 @@ import QtQuick
 import QtQuick.Shapes
 
 // Marca EsquizoCap em movimento — onda de tamanho + cor girando em sentido horário.
+//
+// Os dois movimentos giram no MESMO sentido, mas em ciclos DIFERENTES e de propósito:
+// `cycle` (onda de escala) e `hueCycle` (roda de matiz) não são múltiplos um do outro, então
+// a combinação nunca se repete igual. É o que faz o anel parecer reagir a um sinal em vez de
+// tocar um loop curto. Amarrar as duas fases numa só desfaz justamente esse efeito.
 Item {
     id: root
 
     property real size: 120
     property bool running: true
     property int cycle: 1800
+    property int hueCycle: 7000
     property real spread: 0.85
     property real liveHue: -1
     property color waveColor: "#f0eef2"
     property real phase: 0
+    property real huePhase: 0
 
     readonly property real u: size / 120
     readonly property var pts: [
@@ -46,7 +53,7 @@ Item {
             opacity: 0.42 + 0.58 * k
             color: root.liveHue >= 0
                 ? Qt.hsla(root.liveHue / 360, 0.62, 0.57, 1)
-                : Qt.hsla((((root.hues[index] + root.phase * 360) % 360) + 360) % 360 / 360,
+                : Qt.hsla((((root.hues[index] + root.huePhase * 360) % 360) + 360) % 360 / 360,
                           0.62, 0.5 + 0.1 * k, 1)
         }
     }
@@ -77,6 +84,14 @@ Item {
         running: root.running
         from: 0; to: 1
         duration: root.cycle
+        loops: Animation.Infinite
+    }
+
+    // Roda de matiz: mesmo sentido, ciclo próprio e mais lento.
+    NumberAnimation on huePhase {
+        running: root.running && root.liveHue < 0
+        from: 0; to: 1
+        duration: root.hueCycle
         loops: Animation.Infinite
     }
 }
