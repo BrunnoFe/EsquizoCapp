@@ -8,6 +8,7 @@ import Qt5Compat.GraphicalEffects
 import EsquizoCap.Base 1.0
 import EsquizoCap.Configuracoes 1.0
 import EsquizoCap.Controles 1.0
+import EsquizoCap.Dialogos 1.0
 import EsquizoCap.Janela 1.0
 import EsquizoCap.Layout 1.0
 import EsquizoCap.Visualizacao 1.0
@@ -49,20 +50,22 @@ ApplicationWindow {
         onTriggered: controller.salvarGeometriaJanela(win.x, win.y, win.width, win.height)
     }
 
-    // paleta de chrome
-    readonly property color panelBg: "#0d1418"
-    readonly property color cardBg: "#111d23"
-    readonly property color stroke: Qt.rgba(1,1,1,0.06)
-    readonly property color teal: "#14b8c4"
-    readonly property color muted: "#8fa6ac"
-    readonly property color dim: "#5f8a90"
-    readonly property color verde: "#3fce8f"
-    readonly property color vermelho: "#e2534b"
-    readonly property int fontPx: 13
+    // paleta de chrome — agora delegada ao singleton `Theme` (EsquizoCap.Base).
+    // Os aliases seguem aqui porque o corpo deste arquivo os usa por nome curto em
+    // centenas de lugares; quem define os valores é o Theme.
+    readonly property color panelBg: Theme.panelBg
+    readonly property color cardBg: Theme.cardBg
+    readonly property color stroke: Theme.stroke
+    readonly property color teal: Theme.teal
+    readonly property color muted: Theme.muted
+    readonly property color dim: Theme.dim
+    readonly property color verde: Theme.verde
+    readonly property color vermelho: Theme.vermelho
+    readonly property int fontPx: Theme.fontPx
 
     FontLoader { id: mono; source: "" } // troque por IBM Plex Mono se quiser embutir
-    readonly property string monoFam: "Consolas, 'IBM Plex Mono', monospace"
-    readonly property string sansFam: "'Segoe UI', 'Space Grotesk', sans-serif"
+    readonly property string monoFam: Theme.monoFam
+    readonly property string sansFam: Theme.sansFam
 
     // ===================================================================
     //  SHELL — recorta a janela inteira num retângulo de cantos arredondados.
@@ -787,9 +790,38 @@ ApplicationWindow {
         }
 
         // ============ JANELA DE CONFIGURAÇÕES ============
-        // z acima dos painéis deslizantes (8/9) e da borda, abaixo do banner de erro (20)
-        // não serve aqui: o erro precisa aparecer sobre a janela, então ela fica em 15.
+        // z acima dos painéis deslizantes (8/9) e da borda, abaixo das mensagens (40/41):
+        // um erro precisa aparecer sobre a janela de configurações, nunca atrás dela.
         JanelaConfiguracoes { id: janelaConfiguracoes; z: 15 }
+
+        // ============ MENSAGENS AO USUÁRIO ============
+        // Dentro do `shell` — e este é o conserto de um defeito do banner antigo, que ficava
+        // fora e por isso ignorava os cantos arredondados da janela. Acima da borda de
+        // simulação (30), porque nada pode cobrir um erro.
+        Toast {
+            id: toast
+            z: 40
+            aberto: controller.toastAberto
+            severidade: controller.toastSeveridade
+            titulo: controller.toastTitulo
+            mensagem: controller.toastMensagem
+            identidade: controller.toastSituacao
+            onDispensado: controller.fecharToast()
+        }
+
+        CaixaDeMensagem {
+            id: caixaDeMensagem
+            z: 41
+            open: controller.caixaAberta
+            severidade: controller.caixaSeveridade
+            titulo: controller.caixaTitulo
+            mensagem: controller.caixaMensagem
+            detalhe: controller.caixaDetalhe
+            acoes: controller.caixaAcoes
+            dispensavel: controller.caixaDispensavel
+            onRespondida: (papel) => controller.responderCaixa(papel)
+            onDispensada: controller.fecharCaixa()
+        }
     }
 
     // ESC em camadas: primeiro fecha o que estiver aberto, e só então sai da tela
@@ -798,7 +830,11 @@ ApplicationWindow {
     // abaixo), então nada de win.showNormal() aqui, que dessincronizaria o estado.
     Shortcut { sequence: "Escape"
         onActivated: {
-            if (setupPanel.open || settingsPanel.open || janelaConfiguracoes.open) {
+            // A caixa de mensagem vem PRIMEIRO: com ela aberta, ESC fecha a caixa e não o
+            // painel que estiver atrás. Ela própria decide se aceita ser dispensada.
+            if (controller.caixaAberta) {
+                caixaDeMensagem.dispensar()
+            } else if (setupPanel.open || settingsPanel.open || janelaConfiguracoes.open) {
                 setupPanel.open = false; settingsPanel.open = false; janelaConfiguracoes.open = false
             } else if (controller.telaCheia) {
                 controller.alternarTelaCheia()
@@ -830,21 +866,4 @@ ApplicationWindow {
             if (!controller.perguntarOndeSalvar) controller.salvarGravacaoNaPastaPadrao()
             else if (!dialogoGravacao.visible) dialogoGravacao.open()
         } }
-
-    // ---- banner de erro dispensável (falha de conexão, falha ao gravar...) ----
-    Rectangle {
-        id: bannerErro
-        visible: controller.erroTexto.length > 0
-        anchors { top: parent.top; horizontalCenter: parent.horizontalCenter; topMargin: 16 }
-        z: 20; radius: 10; height: 40
-        implicitWidth: erroRow.implicitWidth + 28
-        color: "#2a1416"; border.color: Qt.rgba(0.886,0.325,0.294,0.4)
-        RowLayout { id: erroRow; anchors.centerIn: parent; spacing: 10
-            Text { text: controller.erroTexto; color: "#ffb4ae"; font.pixelSize: 12 }
-            Button { implicitWidth: 22; implicitHeight: 22; padding: 0
-                background: Rectangle { color: "transparent" }
-                contentItem: Text { text: "✕"; color: "#ffb4ae"; font.pixelSize: 12
-                    horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                onClicked: controller.limparErro() } }
-    }
 }

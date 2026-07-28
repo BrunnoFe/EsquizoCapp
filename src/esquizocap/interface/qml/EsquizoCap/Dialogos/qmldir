@@ -1,0 +1,3 @@
+module EsquizoCap.Dialogos
+CaixaDeMensagem 1.0 CaixaDeMensagem.qml
+Toast 1.0 Toast.qml

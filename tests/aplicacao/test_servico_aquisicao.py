@@ -11,6 +11,7 @@ import time
 import pytest
 from conftest import conectar_leitor
 
+from esquizocap.aplicacao.catalogo_erros import Situacao
 from esquizocap.aplicacao.servico_aquisicao import (
     EventoErro,
     EventoParado,
@@ -154,7 +155,9 @@ class TestPropagacaoDeErro:
         erros = [evento for evento in eventos if isinstance(evento, EventoErro)]
         assert len(erros) == 1
         assert isinstance(erros[0].erro, ErroStreamPerdido)
-        assert 'OpenSignals' in erros[0].mensagem_usuario
+        # Afirmado pela identidade, e não pelo texto: a redação da mensagem é revisável e
+        # não deveria quebrar um teste de propagação de erro.
+        assert erros[0].caixa.situacao is Situacao.AQUISICAO_PAROU_BITALINO
 
     def test_apos_o_erro_ainda_vem_o_evento_parado(self, modelo: ModeloPreditor) -> None:
         """É o EventoParado que devolve a GUI ao estado ocioso e FECHA O HARDWARE.

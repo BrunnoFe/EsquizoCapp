@@ -131,16 +131,16 @@ from pathlib import Path
 from PySide6.QtCore import QUrl
 from PySide6.QtQml import QQmlApplicationEngine
 
-BASE_QML = Path(__file__).resolve().parent / "src" / "esquizocap" / "interface"
+BASE_QML = Path(__file__).resolve().parent / 'src' / 'esquizocap' / 'interface'
 
 engine = QQmlApplicationEngine()
-engine.rootContext().setContextProperty("controller", controller)
+engine.rootContext().setContextProperty('controller', controller)
 
 # 1) registrar o import path ANTES de qualquer engine.load
-engine.addImportPath(str(BASE_QML / "qml"))
+engine.addImportPath(str(BASE_QML / 'qml'))
 
 # 2) só então carregar a view raiz
-raiz = BASE_QML / "EsquizoCapView.qml"
+raiz = BASE_QML / 'EsquizoCapView.qml'
 engine.load(QUrl.fromLocalFile(str(raiz)))
 ```
 

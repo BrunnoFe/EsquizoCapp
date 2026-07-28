@@ -15,6 +15,8 @@ from pathlib import Path
 import pytest
 from PySide6.QtCore import QCoreApplication
 
+from esquizocap.aplicacao import catalogo_erros
+from esquizocap.aplicacao.catalogo_erros import PapelAcao, Severidade, Situacao
 from esquizocap.dominio.ciclo_aquisicao import ModoAnalise
 from esquizocap.hardware import fabrica
 from esquizocap.hardware.arduino_fake import ArduinoFake
@@ -569,7 +571,8 @@ class TestTravaDaSimulacao:
         controlador.definirSimulacao('arduino', True)
 
         assert controlador._arduino is arduino_antes
-        assert controlador.erroTexto != '', 'a recusa precisa aparecer na tela, não só no log'
+        assert controlador.toastAberto, 'a recusa precisa aparecer na tela, não só no log'
+        assert controlador.toastSituacao == Situacao.SIMULACAO_BLOQUEADA.value
 
     def test_a_variavel_de_ambiente_trava_os_controles(self, controlador: EsquizoController) -> None:
         """`controlador` roda com ESQUIZOCAP_FAKE=tudo: o ambiente vence, e o menu tem que
@@ -758,4 +761,89 @@ class TestDiagnostico:
 
         controlador.abrirLogAtual()
 
-        assert controlador.erroTexto != ''
+        assert controlador.toastAberto
+        assert controlador.toastSituacao == Situacao.SEM_ARQUIVO_DE_LOG.value
+
+
+class TestMensagensAoUsuario:
+    """As duas superfícies de mensagem e o que decide entre elas.
+
+    O que existia antes era um banner só, de altura fixa, que cortava a metade acionável do
+    texto e era sobrescrito em silêncio pela mensagem seguinte. Estes testes fixam o
+    comportamento que substituiu isso.
+    """
+
+    def test_erro_grave_abre_a_caixa_e_nao_o_toast(self, controlador: EsquizoController) -> None:
+        controlador._reportar(catalogo_erros.falha_conexao_arduino(OSError('porta ocupada')))
+
+        assert controlador.caixaAberta
+        assert not controlador.toastAberto
+        assert controlador.caixaSituacao == Situacao.FALHA_CONEXAO_ARDUINO.value
+        assert controlador.caixaSeveridade == Severidade.ERRO.value
+
+    def test_recado_leve_vira_toast_e_nao_a_caixa(self, controlador: EsquizoController) -> None:
+        """Não abrir uma pasta não pode congelar a tela no meio de uma performance."""
+        controlador._reportar(catalogo_erros.pasta_logs_inacessivel(Path('C:/logs')))
+
+        assert controlador.toastAberto
+        assert not controlador.caixaAberta
+
+    def test_um_toast_nao_apaga_uma_caixa_por_ler(self, controlador: EsquizoController) -> None:
+        """REGRESSÃO: com uma variável só, o recado seguinte apagava o erro anterior."""
+        controlador._reportar(catalogo_erros.falha_conexao_arduino(OSError('x')))
+        controlador._reportar(catalogo_erros.sem_arquivo_de_log())
+
+        assert controlador.caixaAberta, 'o recado passageiro não pode engolir o erro'
+        assert controlador.toastAberto
+
+    def test_a_mensagem_chega_inteira_na_propriedade(self, controlador: EsquizoController) -> None:
+        """O defeito central do banner antigo: a remediação vinha depois da linha em branco
+        e nunca cabia nos 40px de altura fixa."""
+        controlador._reportar(catalogo_erros.falha_conexao_arduino(OSError('porta ocupada')))
+
+        assert '\n\n' in controlador.caixaMensagem
+        assert len(controlador.caixaMensagem.split('\n\n')[1]) > 0
+
+    def test_as_acoes_atravessam_com_papel_e_rotulo(self, controlador: EsquizoController) -> None:
+        controlador._reportar(catalogo_erros.falha_conexao_arduino(OSError('x')))
+
+        assert controlador.caixaAcoes == [{'papel': PapelAcao.ACEITAR.value, 'rotulo': 'OK'}]
+
+    def test_responder_fecha_a_caixa(self, controlador: EsquizoController) -> None:
+        controlador._reportar(catalogo_erros.falha_conexao_arduino(OSError('x')))
+
+        controlador.responderCaixa(PapelAcao.ACEITAR.value)
+
+        assert not controlador.caixaAberta
+
+    def test_sem_caixa_as_propriedades_ficam_vazias(self, controlador: EsquizoController) -> None:
+        """A view lê estas propriedades mesmo com a caixa fechada; `None` viraria aviso do
+        motor QML, que é o que `test_qml_carrega` proíbe."""
+        assert controlador.caixaTitulo == ''
+        assert controlador.caixaMensagem == ''
+        assert controlador.caixaDetalhe == ''
+        assert controlador.caixaAcoes == []
+
+    def test_caixa_fechada_e_considerada_dispensavel(self, controlador: EsquizoController) -> None:
+        """Sem isto, a view começaria com um ESC inibido por uma caixa que nem existe."""
+        assert controlador.caixaDispensavel
+
+    def test_falha_inesperada_nao_e_dispensavel(self, controlador: EsquizoController) -> None:
+        controlador._reportar(catalogo_erros.falha_inesperada(RuntimeError('bug')))
+
+        assert controlador.caixaAberta
+        assert not controlador.caixaDispensavel
+
+    def test_fechar_toast_limpa_so_o_toast(self, controlador: EsquizoController) -> None:
+        controlador._reportar(catalogo_erros.falha_conexao_arduino(OSError('x')))
+        controlador._reportar(catalogo_erros.sem_arquivo_de_log())
+
+        controlador.fecharToast()
+
+        assert not controlador.toastAberto
+        assert controlador.caixaAberta
+
+    def test_detalhe_tecnico_chega_para_ser_copiado(self, controlador: EsquizoController) -> None:
+        controlador._reportar(catalogo_erros.falha_conexao_arduino(PermissionError('porta ocupada')))
+
+        assert 'PermissionError' in controlador.caixaDetalhe

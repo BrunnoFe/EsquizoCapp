@@ -38,6 +38,7 @@ import math
 import time
 from collections.abc import Callable
 from dataclasses import asdict
+from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -45,7 +46,8 @@ from PySide6.QtCore import Property, QObject, QTimer, QUrl, Signal, SignalInstan
 from PySide6.QtGui import QColor, QDesktopServices, QGuiApplication
 
 from esquizocap import hardware
-from esquizocap.aplicacao import EventoErro, EventoParado, EventoResultado, ServicoAquisicao
+from esquizocap.aplicacao import EventoErro, EventoParado, EventoResultado, ServicoAquisicao, catalogo_erros
+from esquizocap.aplicacao.catalogo_erros import EspecificacaoCaixa
 from esquizocap.dominio.ciclo_aquisicao import CicloAquisicao, ControlesUsuario, ModoAnalise, ResultadoCiclo
 from esquizocap.dominio.predicao import ModeloPreditor
 from esquizocap.hardware import constantes, portas_bluetooth
@@ -238,7 +240,7 @@ class _NucleoControlador:
         def _reconstruir_hardware(self) -> None: ...
         def _reaplicar_canal_ativo_nos_leitores(self) -> None: ...
         def _agendar_gravacao_de_preferencias(self) -> None: ...
-        def _reportar_erro(self, mensagem: str) -> None: ...
+        def _reportar(self, caixa: EspecificacaoCaixa) -> None: ...
         def _aquisicao_em_curso(self) -> bool: ...
         def _porta_derivada_do_bitalino(self) -> str: ...
         def _modo_aquisicao_escolhido(self) -> ModoAquisicao: ...
@@ -742,6 +744,16 @@ class EsquizoController(
     """
 
     erroOcorreu = Signal(str)
+    """Emitido com a `situacao` da mensagem sempre que algo é reportado ao usuário."""
+
+    mensagemSolicitada = Signal(object)
+    """Porta de entrada para mensagens vindas de FORA da GUI thread.
+
+    Quem está noutra thread não pode escrever `_caixa_atual` direto. Emitindo este sinal, o
+    Qt enfileira a chamada de `_reportar` na thread do controller — é o mesmo mecanismo já
+    usado por `bitalinoConexaoFinalizada`. Hoje o único cliente é a rede de segurança de
+    exceções não tratadas (`ponte/rede_de_seguranca.py`)."""
+
     bitalinoConexaoFinalizada = Signal(bool, str)
     """Emitido ao final de uma tentativa de conexão do BITalino: (sucesso, mensagem de
     erro — vazia se sucesso). A thread auxiliar de conexão emite este sinal Qt para
@@ -773,7 +785,10 @@ class EsquizoController(
         self._ciclo: CicloAquisicao | None = None
         self._estado_app: EstadoApp = EstadoApp.CONFIGURANDO
         self._mensagem_status: str = ''
-        self._erro_atual: str = ''
+        # As duas superfícies de mensagem. Separadas porque um recado passageiro não pode
+        # apagar uma caixa que ainda não foi lida, nem vice-versa.
+        self._caixa_atual: EspecificacaoCaixa | None = None
+        self._toast_atual: EspecificacaoCaixa | None = None
         self._continuacao_apos_conectar_bitalino: Callable[[], None] | None = None
         self._conectando_bitalino: bool = False
         """Ligado enquanto a thread de conexão roda.
@@ -823,6 +838,7 @@ class EsquizoController(
         self._timer_preferencias.timeout.connect(self._salvar_preferencias)
 
         self.bitalinoConexaoFinalizada.connect(self._ao_concluir_conexao_bitalino)
+        self.mensagemSolicitada.connect(self._reportar)
 
         self._reavaliar_prontidao()
 
@@ -848,7 +864,7 @@ class EsquizoController(
                     self._pintar_resultado(evento.resultado)
                 case EventoErro():
                     logger.error(f'A thread de aquisição reportou: {evento.erro}')
-                    self._reportar_erro(evento.mensagem_usuario)
+                    self._reportar(evento.caixa)
                 case EventoParado():
                     logger.info(f'Aquisição encerrada. {evento.total_gravado} resultados gravados.')
                     self._finalizar_aquisicao(evento.total_gravado)
@@ -963,7 +979,7 @@ class EsquizoController(
         try:
             self._arduino.conectar(porta=self._selecao.porta_arduino, baudrate=constantes.BAUDRATE_PADRAO)
         except ErroConexaoArduino as erro:
-            self._reportar_erro(f'Não foi possível conectar ao Arduino: {erro}')
+            self._reportar(catalogo_erros.falha_conexao_arduino(erro))
             return
         self._definir_e_notificar(self._conexoes, 'arduino_conectado', True)
 
@@ -1065,7 +1081,7 @@ class EsquizoController(
         motivo = self._motivo_para_nao_alterar_simulacao()
         if motivo:
             logger.info(f'Troca de simulação de "{componente}" recusada: {motivo}')
-            self._reportar_erro(motivo)
+            self._reportar(catalogo_erros.simulacao_bloqueada(motivo))
             return
 
         desejados = set(self._preferencias.componentes_simulados)
@@ -1236,24 +1252,92 @@ class EsquizoController(
         continuacao = self._continuacao_apos_conectar_bitalino
         self._continuacao_apos_conectar_bitalino = None
         if not sucesso:
-            self._reportar_erro(f'Não foi possível conectar ao BITalino: {mensagem_erro}')
+            self._reportar(catalogo_erros.falha_conexao_bitalino(mensagem_erro))
             return
         self._definir_e_notificar(self._conexoes, 'bitalino_conectado', True)
         if continuacao is not None:
             continuacao()
 
-    # ---- erros -----------------------------------------------------------
-    def _reportar_erro(self, mensagem: str) -> None:
-        self._erro_atual = mensagem
-        self.erroOcorreu.emit(mensagem)
+    # ---- mensagens ao usuário --------------------------------------------
+    # Duas superfícies, e quem escolhe entre elas é a severidade da mensagem (ver
+    # `Severidade.abre_caixa`): o que interrompe a obra vai para a caixa modal central; o
+    # recado de ferramenta vira um toast que sai sozinho. A view não decide nada disso —
+    # ela só desenha o que estiver em `_caixa_atual` e `_toast_atual`.
+    def _reportar(self, caixa: EspecificacaoCaixa) -> None:
+        """Põe uma mensagem na tela, na superfície que a severidade dela pedir.
+
+        Chamado também pela drenagem de eventos da thread de aquisição, que roda na GUI
+        thread via `QTimer` — nenhuma thread de fora toca este estado diretamente.
+        """
+        if caixa.severidade.abre_caixa:
+            self._caixa_atual = caixa
+        else:
+            self._toast_atual = caixa
+        self.erroOcorreu.emit(caixa.situacao.value)
         self.estadoMudou.emit()
 
     @Slot()
-    def limparErro(self) -> None:
-        self._erro_atual = ''
+    def fecharCaixa(self) -> None:
+        """Fecha a caixa modal. A view só chama isto quando a caixa é dispensável."""
+        self._caixa_atual = None
         self.estadoMudou.emit()
 
-    erroTexto = Property(str, lambda self: self._erro_atual, notify=_Sinais.estadoMudou)
+    @Slot(str)
+    def responderCaixa(self, papel: str) -> None:
+        """Recebe o botão que foi clicado, identificado pelo PAPEL e não pelo rótulo.
+
+        Hoje todas as caixas são notícia consumada e qualquer papel só fecha. O parâmetro
+        existe porque é aqui que uma confirmação futura ("descartar a gravação?") vai
+        ramificar, sem precisar mexer no QML de novo.
+        """
+        logger.debug(f'Caixa de mensagem respondida com "{papel}"')
+        self.fecharCaixa()
+
+    @Slot()
+    def fecharToast(self) -> None:
+        """Fecha o recado passageiro — pelo X ou porque os 7 segundos venceram."""
+        self._toast_atual = None
+        self.estadoMudou.emit()
+
+    caixaAberta = Property(bool, lambda self: self._caixa_atual is not None, notify=_Sinais.estadoMudou)
+    caixaSituacao = Property(str, lambda self: self._campo_da_caixa('situacao'), notify=_Sinais.estadoMudou)
+    caixaSeveridade = Property(str, lambda self: self._campo_da_caixa('severidade'), notify=_Sinais.estadoMudou)
+    caixaTitulo = Property(str, lambda self: self._campo_da_caixa('titulo'), notify=_Sinais.estadoMudou)
+    caixaMensagem = Property(str, lambda self: self._campo_da_caixa('mensagem'), notify=_Sinais.estadoMudou)
+    caixaDetalhe = Property(str, lambda self: self._campo_da_caixa('detalhe'), notify=_Sinais.estadoMudou)
+    caixaDispensavel = Property(
+        bool, lambda self: self._caixa_atual is None or self._caixa_atual.dispensavel, notify=_Sinais.estadoMudou
+    )
+    caixaAcoes = Property(list, lambda self: self._acoes_da_caixa(), notify=_Sinais.estadoMudou)
+
+    toastAberto = Property(bool, lambda self: self._toast_atual is not None, notify=_Sinais.estadoMudou)
+    toastSituacao = Property(str, lambda self: self._campo_do_toast('situacao'), notify=_Sinais.estadoMudou)
+    toastSeveridade = Property(str, lambda self: self._campo_do_toast('severidade'), notify=_Sinais.estadoMudou)
+    toastTitulo = Property(str, lambda self: self._campo_do_toast('titulo'), notify=_Sinais.estadoMudou)
+    toastMensagem = Property(str, lambda self: self._campo_do_toast('mensagem'), notify=_Sinais.estadoMudou)
+
+    @staticmethod
+    def _texto_do_campo(caixa: EspecificacaoCaixa | None, campo: str) -> str:
+        """Lê um campo da caixa como string, devolvendo vazio quando não há caixa.
+
+        `situacao` e `severidade` são `Enum`; o QML só entende o valor deles.
+        """
+        if caixa is None:
+            return ''
+        valor = getattr(caixa, campo)
+        return str(valor.value) if isinstance(valor, Enum) else str(valor)
+
+    def _campo_da_caixa(self, campo: str) -> str:
+        return self._texto_do_campo(self._caixa_atual, campo)
+
+    def _campo_do_toast(self, campo: str) -> str:
+        return self._texto_do_campo(self._toast_atual, campo)
+
+    def _acoes_da_caixa(self) -> list[dict[str, str]]:
+        """Os botões, como dicionários simples — é o que atravessa para o QML."""
+        if self._caixa_atual is None:
+            return []
+        return [{'papel': acao.papel.value, 'rotulo': acao.rotulo} for acao in self._caixa_atual.acoes]
 
     # ---- gravação (Excel) -------------------------------------------------
     gravacaoPendente = Property(bool, lambda self: self._gravacao_pendente.pendente, notify=_Sinais.estadoMudou)
@@ -1337,7 +1421,7 @@ class EsquizoController(
         try:
             self._gravacao_pendente.salvar_em(destino)
         except ErroDeGravacao as erro:
-            self._reportar_erro(str(erro))
+            self._reportar(catalogo_erros.falha_ao_salvar_gravacao(erro))
         self.estadoMudou.emit()
 
     @Slot()
@@ -1351,10 +1435,7 @@ class EsquizoController(
         try:
             pasta.mkdir(parents=True, exist_ok=True)
         except OSError as erro:
-            self._reportar_erro(
-                f'Não foi possível criar a pasta de gravações "{pasta}": {erro}. '
-                'A gravação continua pendente — escolha outro destino nas configurações.'
-            )
+            self._reportar(catalogo_erros.pasta_gravacoes_nao_criada(pasta, erro))
             return
         self.salvarGravacao(str(pasta / f'{self._gravacao_pendente.nome_sugerido}.xlsx'))
 
@@ -1390,24 +1471,24 @@ class EsquizoController(
         try:
             pasta.mkdir(parents=True, exist_ok=True)
         except OSError as erro:
-            self._reportar_erro(f'Não foi possível abrir a pasta de gravações "{pasta}": {erro}.')
+            self._reportar(catalogo_erros.pasta_gravacoes_inacessivel(pasta, erro))
             return
         if not self._abrir_no_sistema(pasta):
-            self._reportar_erro(f'Não foi possível abrir a pasta de gravações "{pasta}".')
+            self._reportar(catalogo_erros.pasta_gravacoes_inacessivel(pasta))
 
     @Slot()
     def abrirPastaLogs(self) -> None:
         if not self._abrir_no_sistema(recursos.PASTA_LOGS):
-            self._reportar_erro(f'Não foi possível abrir a pasta de logs "{recursos.PASTA_LOGS}".')
+            self._reportar(catalogo_erros.pasta_logs_inacessivel(recursos.PASTA_LOGS))
 
     @Slot()
     def abrirLogAtual(self) -> None:
         arquivo = log.arquivo_atual()
         if arquivo is None:
-            self._reportar_erro('Ainda não há arquivo de log para esta execução.')
+            self._reportar(catalogo_erros.sem_arquivo_de_log())
             return
         if not self._abrir_no_sistema(arquivo):
-            self._reportar_erro(f'Não foi possível abrir o log "{arquivo}".')
+            self._reportar(catalogo_erros.log_inacessivel(arquivo))
 
     textoDiagnostico = Property(str, lambda self: self._texto_diagnostico(), notify=_Sinais.estadoMudou)
 

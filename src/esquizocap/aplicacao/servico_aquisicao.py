@@ -28,6 +28,8 @@ import queue
 import threading
 from dataclasses import dataclass
 
+from esquizocap.aplicacao import catalogo_erros
+from esquizocap.aplicacao.catalogo_erros import EspecificacaoCaixa
 from esquizocap.dominio.ciclo_aquisicao import CicloAquisicao, ControlesUsuario, ResultadoCiclo
 from esquizocap.hardware.contratos import (
     ErroConexaoArduino,
@@ -60,9 +62,11 @@ class EventoErro:
 
     erro: Exception
 
-    mensagem_usuario: str
-    """Texto pronto para a interface mostrar. Montado aqui porque é aqui que se sabe o
-    que aconteceu — a GUI não deveria estar traduzindo tipos de exceção em português."""
+    caixa: EspecificacaoCaixa
+    """A mensagem pronta para a interface mostrar, montada aqui porque é aqui que se sabe o
+    que aconteceu — a GUI não deveria estar traduzindo tipos de exceção em português. O
+    texto em si vive no `catalogo_erros`, para que todas as mensagens do app possam ser
+    lidas e revisadas juntas."""
 
 
 @dataclass(frozen=True)
@@ -228,25 +232,11 @@ class ServicoAquisicao:
 
         except (ErroStreamPerdido, ErroConexaoBitalino) as erro:
             logger.exception('Aquisição interrompida: falha no BITalino')
-            self._publicar(
-                EventoErro(
-                    erro=erro,
-                    mensagem_usuario=(
-                        f'A aquisição parou: {erro}\n\n'
-                        'Verifique se o OpenSignals segue aberto, com o compartilhamento '
-                        '"Lab Streaming Layer" ativo, e se o BITalino continua ligado.'
-                    ),
-                )
-            )
+            self._publicar(EventoErro(erro=erro, caixa=catalogo_erros.aquisicao_parou_bitalino(erro)))
 
         except ErroConexaoArduino as erro:
             logger.exception('Aquisição interrompida: falha no Arduino')
-            self._publicar(
-                EventoErro(
-                    erro=erro,
-                    mensagem_usuario=(f'A aquisição parou: {erro}\n\nVerifique o cabo USB do Arduino.'),
-                )
-            )
+            self._publicar(EventoErro(erro=erro, caixa=catalogo_erros.aquisicao_parou_arduino(erro)))
 
         except Exception as erro:  # noqa: BLE001
             # Um erro que não é de hardware é BUG — e um bug numa thread morre em
@@ -255,16 +245,7 @@ class ServicoAquisicao:
             # aparecer para o usuário. É o oposto do `except` genérico que a versão antiga
             # usava para fingir que todo problema era "falha de hardware".
             logger.exception('Erro inesperado na thread de aquisição (isto é um bug)')
-            self._publicar(
-                EventoErro(
-                    erro=erro,
-                    mensagem_usuario=(
-                        f'Erro inesperado na aquisição: {type(erro).__name__}: {erro}\n\n'
-                        'Isto é um defeito do programa, não do hardware. '
-                        'O traceback completo está no arquivo de log.'
-                    ),
-                )
-            )
+            self._publicar(EventoErro(erro=erro, caixa=catalogo_erros.erro_inesperado_na_aquisicao(erro)))
 
         finally:
             # SEMPRE publicado, inclusive após erro: é o que devolve a GUI ao estado

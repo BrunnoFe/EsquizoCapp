@@ -19,6 +19,7 @@ from PySide6.QtQml import QQmlApplicationEngine
 from esquizocap.dominio.predicao import ErroDeModelo, carregar_modelo
 from esquizocap.infraestrutura import config, log, preferencias, recursos
 from esquizocap.interface.controller import EsquizoController
+from esquizocap.interface.ponte import rede_de_seguranca
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,10 @@ def main() -> int:
     engine = QQmlApplicationEngine()
     controller = EsquizoController(configuracao=configuracao, modelo=modelo, preferencias_usuario=preferencias_usuario)
     engine.rootContext().setContextProperty('controller', controller)
+
+    # Depois do controller, porque é ele quem mostra a caixa; antes do `engine.load`, para
+    # que um erro já na construção da tela apareça em vez de morrer no console.
+    rede_de_seguranca.instalar(controller)
 
     base_qml = Path(__file__).resolve().parent / 'src' / 'esquizocap' / 'interface' / 'qml'
     # O import path DEVE ser registrado antes de qualquer engine.load: a resolução de

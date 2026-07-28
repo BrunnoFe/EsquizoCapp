@@ -1,4 +1,5 @@
 module EsquizoCap.Base
+singleton Theme 1.0 Theme.qml
 IconGlyph 1.0 IconGlyph.qml
 LogoMark 1.0 LogoMark.qml
 StatusDot 1.0 StatusDot.qml

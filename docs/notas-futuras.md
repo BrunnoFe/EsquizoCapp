@@ -4,6 +4,41 @@ Ideias levantadas e **deliberadamente adiadas**. Não são compromissos, e nenhu
 implementada. Estão aqui para não se perderem e para que quem encontrar o assunto no código
 saiba que já foi pensado.
 
+## Migrar os componentes QML antigos para o singleton `Theme`
+
+`Base/Theme.qml` nasceu com a caixa de mensagem (ver `docs/adr/0002-...`) e é hoje a única
+definição das cores do app. Mas só os componentes novos consomem dele: `Configuracoes/`,
+`Controles/`, `Base/` e `Janela/` continuam redigitando os mesmos hexadecimais na mão, e
+`EsquizoCapView.qml` mantém aliases `readonly property` que só delegam ao Theme.
+
+Não foi feito junto porque é refactor de paleta enfiado dentro de uma feature de erro: o
+diff pararia de ser revisável, e uma regressão visual não teria como ser atribuída a uma das
+duas mudanças. Merece um ticket próprio, com conferência visual tela a tela.
+
+## Auditar os `ValueError` crus do protocolo do BITalino
+
+`hardware/protocolo_bitalino.py` levanta `ValueError` em cinco pontos (canal inválido, taxa
+não suportada, frame malformado) e `hardware/constantes.py` em mais um. Nenhum tem entrada
+no `catalogo_erros`, então todos caem na `FALHA_INESPERADA` genérica ("isto é um defeito do
+programa") — o que é impreciso: taxa não suportada é escolha do usuário, não bug.
+
+A rede de segurança garante que nenhum deles passa despercebido enquanto isso, que era o
+risco real. Dar mensagem própria a cada um é trabalho de domínio de hardware, não de UI.
+
+## Entrada de texto na caixa de mensagem
+
+A `EspecificacaoCaixa` foi desenhada para receber um campo opcional de entrada sem
+reescrever nada, mas isso não foi construído. O que falta decidir: validar antes de aceitar,
+o que "OK" faz com valor inválido, foco e ordem de tab. É outro contrato, não uma variação
+da caixa informativa.
+
+## Migrar a confirmação de gravação pendente para a caixa
+
+Hoje, decidir salvar ou descartar uma gravação pendente passa pelo `FileDialog` do sistema.
+Com a `CaixaDeMensagem` e os papéis `CONFIRMAR`/`RECUSAR` já prontos, isso pode virar uma
+confirmação no idioma visual do app. Seria o primeiro caso de uso com resposta de verdade —
+e o que vai exercitar o caminho `respondida(papel)` que hoje só fecha a caixa.
+
 ## Tela cheia iniciada pelo sistema operacional dessincroniza o estado
 
 Quem manda em tela cheia é o `controller.telaCheia`; a janela só espelha, pelo `Connections`

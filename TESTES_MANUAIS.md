@@ -165,7 +165,44 @@ do lado Python; só a fita denuncia.
 
 ---
 
-## 5. PENDENTE — troca real↔simulado sem reiniciar
+## 5. Caixa de mensagem de erro
+
+**Quando:** ao mexer em `Dialogos/CaixaDeMensagem.qml`, `Dialogos/Toast.qml` ou no
+`catalogo_erros`.
+
+**Por que exige bancada:** a suíte carrega o QML sem janela e confirma que nenhum binding
+está errado, mas nada offscreen prova que o texto **cabe** — e caber era exatamente o
+defeito do banner anterior, que cortava a metade acionável de toda mensagem. Legibilidade e
+recorte de cantos só a tela mostra.
+
+1. Com a aquisição rodando, feche o OpenSignals (ou desligue o BITalino). A caixa deve abrir
+   **no centro**, e a mensagem inteira precisa estar legível: tanto o que aconteceu quanto o
+   parágrafo do que fazer. Nada cortado, nada saindo pela borda.
+2. Confirme os cantos arredondados: a caixa vive dentro do `shell`, então o backdrop escuro
+   tem que respeitar o arredondamento da janela — em modo normal e em tela cheia.
+3. Expanda "Detalhes técnicos" e clique em **Copiar detalhes**. Cole num editor: deve vir
+   título, mensagem e o tipo da exceção.
+4. Abra a janela de Configurações e, com ela aberta, provoque um erro. A caixa tem que
+   aparecer **sobre** a janela de configurações, nunca atrás. Pressione ESC: fecha a caixa e
+   a janela de configurações **continua aberta**.
+5. Clique em **Diagnóstico → abrir pasta de logs** com um caminho inválido. Deve virar um
+   toast no topo, discreto, que **some sozinho em ~7 segundos** — e não uma caixa modal.
+6. Provoque um erro grave e, sem fechá-lo, dispare um toast. O toast não pode apagar a
+   caixa; os dois convivem.
+7. Redimensione a janela até o mínimo (940×620) com a caixa aberta: ela deve encolher e o
+   corpo ganhar rolagem, sem que os botões do rodapé sumam.
+
+### Caixa não dispensável
+
+A `FALHA_INESPERADA` é a única que não fecha por ESC, X ou clique fora — de propósito. Para
+exercitá-la é preciso provocar uma exceção não prevista (ex.: um `raise` temporário num
+slot). Confirme que **o botão OK fecha**. Se algum dia uma caixa não dispensável aparecer
+sem botão, é uma tela travada: a suíte tem uma invariante contra isso
+(`tests/aplicacao/test_catalogo_erros.py`), mas confirme na mão se mexer no catálogo.
+
+---
+
+## 6. PENDENTE — troca real↔simulado sem reiniciar
 
 **Quando:** ao mexer em `EsquizoController._reconstruir_hardware` ou na fábrica de hardware.
 
@@ -192,7 +229,7 @@ terminal — com ela definida os controles ficam travados de propósito.
 9. Feche e reabra o app: as escolhas de simulação e os sliders de aparência devem voltar
    como estavam (gravados em `settings/preferencias.json`).
 
-## 6. Rail: alternância dos painéis, ESC e desenho dos ícones
+## 7. Rail: alternância dos painéis, ESC e desenho dos ícones
 
 **Quando:** ao mexer no rail de `EsquizoCapView.qml`, no `IconGlyph` ou nos atalhos.
 
