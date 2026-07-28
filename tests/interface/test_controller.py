@@ -9,6 +9,7 @@ Tudo aqui roda com `ESQUIZOCAP_FAKE=tudo`: nenhum teste toca hardware.
 """
 
 import logging
+import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
@@ -277,11 +278,23 @@ class TestPortasSeriais:
         )
         controlador._portas_seriais_disponiveis = ['COM6', 'COM10 - CH340']
 
+    @staticmethod
+    def _derivar_a_porta_agora(controlador: EsquizoController) -> None:
+        """Preenche o cache da porta do BITalino sem passar pela espera.
+
+        Num binding a derivação é assíncrona e devolve vazio até a varredura voltar. Nestes
+        testes o interesse é o FILTRO, não a espera, então a porta é derivada bloqueando —
+        o mesmo caminho que o gesto de conectar usa.
+        """
+        controlador._porta_bitalino_em_cache = None
+        controlador._porta_derivada_do_bitalino(bloqueando=True)
+
     def test_a_porta_do_bitalino_sai_da_lista_do_arduino(
         self, controlador: EsquizoController, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         self._com_portas_reais(controlador, monkeypatch)
         controlador.modoAquisicao = ModoAquisicao.DIRETO.value
+        self._derivar_a_porta_agora(controlador)
 
         oferecidas = controlador.portasSeriaisDisponiveis
 
@@ -296,6 +309,63 @@ class TestPortasSeriais:
         controlador.modoAquisicao = ModoAquisicao.OPENSIGNALS.value
 
         assert 'COM6' in controlador.portasSeriaisDisponiveis
+
+
+class TestVarreduraDePortas:
+    """A varredura sai da GUI thread, e a espera dela é visível.
+
+    Varrer bloqueando congelava o event loop — e, congelado, nenhum indicador de carregamento
+    consegue desenhar um quadro. A espera só pode ser mostrada porque ela agora é assíncrona.
+    """
+
+    @staticmethod
+    def _esperar_a_varredura(controlador: EsquizoController, limite_segundos: float = 5.0) -> None:
+        """Bate o relógio do controller até a varredura ser colhida.
+
+        Chama `_ao_bater_o_relogio` na mão porque não há event loop rodando nos testes: é o
+        mesmo método que o `QTimer` chamaria na aplicação.
+        """
+        limite = time.monotonic() + limite_segundos
+        while controlador._varrendo_portas and time.monotonic() < limite:
+            controlador._ao_bater_o_relogio()
+            time.sleep(0.01)
+        assert not controlador._varrendo_portas, 'A varredura de portas não terminou dentro do limite.'
+
+    def test_a_lista_de_portas_chega_pela_varredura(self, controlador: EsquizoController) -> None:
+        """A lista nasce vazia e é a varredura que a preenche — não o construtor."""
+        self._esperar_a_varredura(controlador)
+
+        assert controlador.portasSeriaisDisponiveis
+        assert controlador.portaArduino in controlador.portasSeriaisDisponiveis
+
+    def test_a_espera_e_anunciada_enquanto_dura(self, controlador: EsquizoController) -> None:
+        """`varrendoPortas` é o gate real do indicador de carregamento: sem ele, os
+        seletores apareceriam vazios como se a máquina não tivesse porta nenhuma."""
+        self._esperar_a_varredura(controlador)
+        assert controlador.varrendoPortas is False
+
+        controlador.reexaminarPortas()
+        assert controlador.varrendoPortas is True
+
+        self._esperar_a_varredura(controlador)
+        assert controlador.varrendoPortas is False
+
+    def test_uma_varredura_por_vez(self, controlador: EsquizoController) -> None:
+        """A guarda de reentrância é o que permite pedir a varredura de dentro de um binding.
+
+        Sem ela, o binding que lê vazio pediria uma varredura nova a cada quadro, e a
+        aplicação abriria threads sem parar até o sistema recusar.
+        """
+        self._esperar_a_varredura(controlador)
+        controlador.reexaminarPortas()
+        varredor = controlador._varredor_portas
+
+        for _ in range(20):
+            controlador.reexaminarPortas()
+
+        self._esperar_a_varredura(controlador)
+        assert controlador._varredor_portas is varredor
+        assert varredor.coletar() is None, 'Sobrou resultado de varredura: mais de uma thread rodou.'
 
 
 class TestTaxaAcordada:

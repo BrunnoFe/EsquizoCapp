@@ -3,5 +3,6 @@ singleton Theme 1.0 Theme.qml
 IconGlyph 1.0 IconGlyph.qml
 LogoMark 1.0 LogoMark.qml
 LogoSpinner 1.0 LogoSpinner.qml
+IndicadorCarregando 1.0 IndicadorCarregando.qml
 StatusDot 1.0 StatusDot.qml
 Chip 1.0 Chip.qml

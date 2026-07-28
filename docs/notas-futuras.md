@@ -203,3 +203,16 @@ O detalhe que decide o desenho: o **modelo é carregado em `main.py` ANTES de a 
 existir**, então hoje a tela nem chega a estar de pé enquanto ele sobe. Cobrir essa etapa
 exige mover o carregamento para depois do `engine.load` — mudança de ordem de inicialização,
 com risco próprio, e por isso deliberadamente fora da sessão que construiu a tela.
+
+## Convenção: espera visível = `IndicadorCarregando`, nunca `BusyIndicator`
+
+Toda espera perceptível mostra `Base/IndicadorCarregando.qml` (a marca animada em escala
+pequena). O `BusyIndicator` do QtQuick.Controls **não é usado em lugar nenhum** e não deve
+entrar: o indicador da casa é a marca. Duas regras que vão junto — o gate tem que ser uma
+`Property` real do controller, nunca um `Timer` chutado no QML, e no máximo **um** indicador
+visível por região da tela ao mesmo tempo (coincidindo dois, vence o rótulo mais específico).
+
+Fica em aberto quais outras esperas merecem tratamento. As três cobertas hoje são conexão do
+BITalino, varredura de portas e o diagnóstico que depende dela; `pararAquisicao` ainda bloqueia
+a GUI thread por 1–3 s (comportamento herdado do Tkinter, ver o docstring do método) e por isso
+não tem como mostrar indicador nenhum — resolvê-lo é tornar a parada assíncrona, ticket próprio.

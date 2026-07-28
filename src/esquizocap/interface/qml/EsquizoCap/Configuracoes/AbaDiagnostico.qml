@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import EsquizoCap.Base 1.0
 import EsquizoCap.Controles 1.0
 import EsquizoCap.Layout 1.0
 
@@ -91,10 +92,33 @@ ColumnLayout {
 
             RowLayout {
                 Layout.fillWidth: true
+                spacing: 10
                 BotaoSecundario {
                     id: copiar
                     text: "Copiar diagnóstico"
+                    // Copiar durante a varredura levaria um diagnóstico com "Porta de
+                    // acesso: (não encontrada)" — exatamente a linha que quem pede o
+                    // relatório vai olhar primeiro, e errada.
+                    enabled: !controller.varrendoPortas
+                    opacity: enabled ? 1 : 0.45
                     onClicked: { controller.copiarDiagnostico(); avisoCopiado.restart() }
+                }
+                BotaoSecundario {
+                    text: "Reexaminar portas"
+                    enabled: !controller.varrendoPortas
+                    opacity: enabled ? 1 : 0.45
+                    onClicked: controller.reexaminarPortas()
+                }
+
+                // O diagnóstico é montado na hora, mas uma das suas linhas — a porta de
+                // acesso derivada do MAC — vem da varredura de portas. Enquanto ela não
+                // volta, o texto acima está incompleto, e dizer isso é o ponto.
+                //
+                // REGRA: um indicador por região. Esta aba é uma região, e este é o único.
+                IndicadorCarregando {
+                    size: 18
+                    rotulo: "montando diagnóstico…"
+                    running: controller.varrendoPortas
                 }
                 Text {
                     id: confirmacao

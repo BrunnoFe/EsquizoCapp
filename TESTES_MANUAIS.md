@@ -271,3 +271,50 @@ julga vendo. Não há hardware envolvido — `ESQUIZOCAP_FAKE=tudo` serve.
    carregamento **não pode reaparecer**. Ela é de boot, uma vez só.
 6. Confira que o wordmark "esquizocap" da tela usa a mesma tipografia da barra de título, com
    o "cap" em teal.
+
+## 9. Indicadores de carregamento inline
+
+**Quando:** ao mexer em `Base/IndicadorCarregando.qml`, em `Base/LogoSpinner.qml`, ou em
+qualquer um dos pontos de espera — `Controles/ConnectButton.qml`, `Dialogos/Toast.qml`,
+`Configuracoes/AbaDiagnostico.qml`, o painel de setup em `App/EsquizoCapView.qml`.
+
+**Por que exige janela:** os testes provam que as `Property` existem e que o QML instancia,
+mas não que a onda **percorre** o anel a 18 px, que ela é seca (e não a respiração larga do
+splash), nem que os elementos ao redor ficam parados quando o indicador entra e sai. Nada
+disso é observável offscreen.
+
+**Hardware:** o roteiro inteiro funciona com `ESQUIZOCAP_FAKE=tudo`, exceto o passo 5, que
+precisa de um BITalino real para a conexão durar tempo suficiente de ser vista.
+
+1. **Varredura no boot.** `python main.py` e abra **Setup / hardware** o mais rápido que
+   conseguir. Na seção **Arduino**, entre o dropdown de porta e o botão Conectar, deve
+   aparecer o anel pequeno com **"procurando portas…"**, e o dropdown de porta ainda vazio.
+   Some sozinho quando a lista popula. Se você nunca vê (a máquina varreu rápido demais),
+   force pelo passo 2.
+2. **Varredura forçada.** **Configurações → Diagnóstico → "Reexaminar portas"**. Enquanto
+   dura: o anel com **"montando diagnóstico…"** aparece na linha dos botões, e **"Copiar
+   diagnóstico"** fica esmaecido e não clicável. Confira que o texto do diagnóstico, depois
+   que o indicador some, mostra uma **"Porta de acesso"** preenchida (ou "(não encontrada)"
+   se o aparelho não estiver pareado) — nunca em branco.
+3. **Personalidade da onda.** Compare o anel de 18 px com o da tela de carregamento: aqui um
+   LED deve **estourar e apagar rápido**, um de cada vez, como o modo "Um a um" do firmware.
+   Se parecer a mesma respiração larga do splash, `cycle`/`spread` não chegaram na LogoSpinner.
+   Em 18 px o traço de EEG **não** pode ser desenhado no meio do anel.
+4. **Nada pula de lugar.** Durante os passos 1 e 2, olhe o que está **em volta** do indicador.
+   Nem o painel de setup nem a aba de diagnóstico podem deslocar quando o indicador entra ou
+   sai. Se algo pular, é espaço sendo reservado a mais (ou a menos).
+5. **Botão de conectar** *(precisa de BITalino real)*. No painel de setup, clique **Conectar**
+   na seção BITalino. Enquanto a tentativa dura: o texto "Conectar" some, o anel aparece
+   **centrado no botão**, o botão **não muda de largura**, e clicar nele de novo não faz nada.
+   Ao terminar, volta a "Desconectar" (sucesso) ou "Conectar" + caixa de erro (falha).
+6. **Toast em andamento** *(precisa de BITalino real)*. Com o setup **fechado** e o BITalino
+   desconectado, clique **Começar aquisição**. No topo deve subir o toast **"Conectando ao
+   BITalino"**, com o anel girando **no lugar do glifo de severidade**, à esquerda do título.
+   Ele **não pode sumir sozinho** enquanto a conexão durar — mesmo passados 7 s. Deve sair no
+   instante em que a conexão terminar.
+7. **Um indicador por região.** No passo 6, com o setup **aberto** durante a conexão: o
+   "procurando portas…" do painel **não** pode estar girando junto com o do botão Conectar.
+   Dois anéis ao mesmo tempo na mesma região é a regressão que este passo procura.
+8. **Não fica girando escondido.** Depois que tudo assentou, deixe o app parado e observe o
+   uso de CPU/GPU. Um indicador invisível que continua animando é o defeito — `running: false`
+   tem que **parar** a animação, não só esconder o item.

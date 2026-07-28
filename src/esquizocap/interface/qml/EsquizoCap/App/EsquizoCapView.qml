@@ -591,6 +591,22 @@ ApplicationWindow {
                                 model: controller.baudRatesDisponiveis
                                 currentIndex: controller.baudRatesDisponiveis.indexOf(controller.baudRateArduino)
                                 onActivated: controller.baudRateArduino = currentValue } }
+                        // Espera visível da varredura de portas. Fica AQUI, uma única vez,
+                        // e não em cada seletor de porta: a varredura é uma só, e o painel
+                        // de setup é uma região de tela só.
+                        //
+                        // REGRA: no máximo um IndicadorCarregando visível por região ao
+                        // mesmo tempo. Varredura e conexão do BITalino podem coincidir
+                        // ("Começar aquisição" conecta e a lista ainda está chegando), e
+                        // dois anéis girando neste painel estreito leriam como travamento.
+                        // A conexão vence por ser a mais específica: ela é o que o operador
+                        // acabou de pedir, e já tem indicador próprio no ConnectButton.
+                        IndicadorCarregando {
+                            Layout.fillWidth: true
+                            size: 18
+                            rotulo: "procurando portas…"
+                            running: controller.varrendoPortas && !controller.conectandoBitalino
+                        }
                         ConnectButton { Layout.fillWidth: true
                             conectado: controller.arduinoConectado
                             onClicked: controller.alternarConexaoArduino() }
@@ -680,6 +696,7 @@ ApplicationWindow {
 
                         ConnectButton { Layout.fillWidth: true
                             conectado: controller.bitalinoConectado
+                            ocupado: controller.conectandoBitalino
                             onClicked: controller.alternarConexaoBitalino() }
                         Text { text: "Tipo de sensor"; color: dim; font.pixelSize: 11 }
                         Flow { Layout.fillWidth: true; spacing: 6
@@ -823,6 +840,7 @@ ApplicationWindow {
             mensagem: controller.toastMensagem
             identidade: controller.toastSituacao
             textoAcao: controller.toastAcaoRotulo
+            emAndamento: controller.toastEmAndamento
             onDispensado: controller.fecharToast()
             onAcaoAcionada: controller.acionarAcaoDoToast()
         }

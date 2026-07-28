@@ -97,6 +97,7 @@ from esquizocap.interface.estado.conexoes_hardware import EstadoConexoesHardware
 from esquizocap.interface.estado.configuracao import ConfiguracaoSelecionada, criar_configuracao_inicial
 from esquizocap.interface.ponte.conexao_bitalino_assincrona import ConectorBitalinoAssincrono
 from esquizocap.interface.ponte.gerenciador_gravacao_pendente import ErroDeGravacao, GerenciadorGravacaoPendente
+from esquizocap.interface.ponte.varredura_portas_assincrona import ResultadoVarredura, VarredorDePortasAssincrono
 from esquizocap.interface.visual import bandas as bandas_eeg
 from esquizocap.interface.visual.cores import hsv_para_qcolor, limitar, qcolor_para_hex
 from esquizocap.interface.visual.simulador_fita_led import ParametrosQuadroLed, SimuladorFitaLed
@@ -111,6 +112,13 @@ _NOME_DO_MODO_LUMINOSIDADE_POR_INDICE = {indice + 1: nome for indice, nome in en
 _CAMPOS_QUE_ATUALIZAM_CONTROLES_AO_VIVO = frozenset(
     {'saturacao', 'brilho', 'intervalo_amostragem_ms', 'tamanho_janela_amostras'}
 )
+
+_SITUACOES_EM_ANDAMENTO = frozenset({catalogo_erros.Situacao.CONECTANDO_BITALINO})
+"""As mensagens que anunciam uma espera ainda em curso, e não um fato consumado.
+
+Conjunto, e não um `if` solto, porque a diferença é de CATEGORIA e não de caso: toda
+mensagem em andamento troca o glifo de severidade pelo indicador de carregamento e perde o
+auto-fechamento. Ver `EsquizoController._toast_descreve_algo_em_curso`."""
 
 INTERVALO_GRAVACAO_PREFERENCIAS_MS: int = 1000
 """Silêncio necessário antes de gravar as preferências em disco.
@@ -230,6 +238,7 @@ class _NucleoControlador:
         _leitores_por_modo: dict[ModoAquisicao, LeitorBitalino]
         _preferencias: Preferencias
         _conectando_bitalino: bool
+        _varrendo_portas: bool
         _portas_seriais_disponiveis: list[str]
         _baud_rates_disponiveis: list[str]
         _canais_bitalino_disponiveis: list[str]
@@ -248,7 +257,8 @@ class _NucleoControlador:
         def _agendar_gravacao_de_preferencias(self) -> None: ...
         def _reportar(self, caixa: EspecificacaoCaixa) -> None: ...
         def _aquisicao_em_curso(self) -> bool: ...
-        def _porta_derivada_do_bitalino(self) -> str: ...
+        def _porta_derivada_do_bitalino(self, *, bloqueando: bool = False) -> str: ...
+        def _pedir_varredura_de_portas(self) -> None: ...
         def _modo_aquisicao_escolhido(self) -> ModoAquisicao: ...
         def _leitor_do_modo_escolhido(self) -> LeitorBitalino: ...
         def _seletor_de_modo_habilitado(self) -> bool: ...
@@ -318,6 +328,20 @@ class _PropriedadesConfiguracao(_NucleoControlador):
         ]
 
     portasSeriaisDisponiveis = Property('QVariantList', _portas_oferecidas_ao_arduino, notify=_Sinais.estadoMudou)
+
+    varrendoPortas = Property(bool, lambda self: self._varrendo_portas, notify=_Sinais.estadoMudou)
+    """Ligado enquanto a thread de varredura de portas roda.
+
+    É o gate de espera visível dos seletores de porta e do texto de diagnóstico: até a
+    varredura voltar, a lista do Arduino está vazia e a porta de acesso do BITalino é
+    desconhecida. Sem isto, os dois apareceriam vazios como se o sistema não tivesse porta
+    nenhuma — que é uma resposta, e errada."""
+
+    conectandoBitalino = Property(bool, lambda self: self._conectando_bitalino, notify=_Sinais.estadoMudou)
+    """Ligado enquanto a thread de conexão do BITalino roda.
+
+    Já existia como estado interno (travando o seletor de modo); agora é público para que o
+    botão de conectar mostre a espera em vez de ficar mudo por vários segundos."""
     baudRatesDisponiveis = Property('QVariantList', lambda self: self._baud_rates_disponiveis, constant=True)
     canaisBitalinoDisponiveis = Property('QVariantList', lambda self: self._canais_bitalino_disponiveis, constant=True)
     macsBitalinoDisponiveis = Property('QVariantList', lambda self: self._macs_bitalino_disponiveis, constant=True)
@@ -784,6 +808,7 @@ class EsquizoController(
         # até `conectar`. Assim a troca de modo é só escolher outra chave deste mapa.
         self._leitores_por_modo = hardware.criar_leitores_por_modo(self._preferencias.componentes_simulados)
         self._conector_bitalino = ConectorBitalinoAssincrono()
+        self._varredor_portas = VarredorDePortasAssincrono()
         self._simulador_leds = SimuladorFitaLed()
         self._gravacao_pendente = GerenciadorGravacaoPendente()
 
@@ -801,6 +826,9 @@ class EsquizoController(
         Um só, e não uma pilha: o gesto que está na cabeça de quem opera é o mais recente,
         e histórico de desfazer num painel cosmético custa mais do que resolve."""
         self._continuacao_apos_conectar_bitalino: Callable[[], None] | None = None
+        self._varrendo_portas: bool = False
+        """Ligado enquanto a thread de varredura de portas roda. Ver `varrendoPortas`."""
+
         self._conectando_bitalino: bool = False
         """Ligado enquanto a thread de conexão roda.
 
@@ -813,10 +841,11 @@ class EsquizoController(
         ajuste de slider: a prontidão é reavaliada a cada mudança de qualquer campo, e a
         varredura do SetupAPI custa dezenas de milissegundos na GUI thread."""
 
-        # listas reais do setup — calculadas uma vez aqui; portas plugadas depois da
-        # abertura da app não aparecem sem reiniciar (limitação aceita, não é regressão:
-        # o Tkinter também nunca detectou hotplug).
-        self._portas_seriais_disponiveis: list[str] = self._arduino.listar_portas()
+        # Nasce VAZIA e é preenchida pela varredura assíncrona disparada no fim deste
+        # construtor. Listar aqui custava dezenas de milissegundos na GUI thread antes do
+        # primeiro quadro — e, sendo síncrono, não havia instante em que a espera pudesse
+        # ser desenhada. Ver `_pedir_varredura_de_portas` e `reexaminarPortas`.
+        self._portas_seriais_disponiveis: list[str] = []
         # Rótulos, e não números: os seis canais não são equivalentes, e o seletor precisa
         # dizer isso. O valor guardado segue sendo o número — ver `canalBitalinoIndice`.
         self._canais_bitalino_disponiveis: list[str] = list(ROTULOS_DOS_CANAIS)
@@ -824,8 +853,10 @@ class EsquizoController(
         self._modos_aquisicao_disponiveis: list[str] = list(MODOS_AQUISICAO)
         self._baud_rates_disponiveis: list[str] = [str(baud) for baud in constantes.BAUDRATES_SUPORTADOS]
 
+        # Sem porta inicial: a lista ainda não existe. Quem escolhe a primeira é o retorno
+        # da varredura, em `_ao_concluir_varredura_de_portas`.
         self._selecao = criar_configuracao_inicial(
-            porta_arduino_inicial=self._portas_seriais_disponiveis[0] if self._portas_seriais_disponiveis else '',
+            porta_arduino_inicial='',
             canal_bitalino_inicial=str(constantes.CANAIS_BITALINO[0]),
             mac_bitalino_inicial=self._macs_bitalino_disponiveis[0],
         )
@@ -852,6 +883,9 @@ class EsquizoController(
         self.mensagemSolicitada.connect(self._reportar)
 
         self._reavaliar_prontidao()
+        # Por último: o relógio que colhe o resultado já precisa estar de pé, e a prontidão
+        # inicial já calculada — a varredura a reavalia sozinha quando chegar.
+        self._pedir_varredura_de_portas()
 
     # ---- relógio / drenagem da fila de aquisição --------------------------
     @staticmethod
@@ -860,6 +894,10 @@ class EsquizoController(
 
     def _ao_bater_o_relogio(self) -> None:
         """Chamado a cada `INTERVALO_DRENAGEM_MS` pelo `QTimer` — nunca bloqueia."""
+        if self._varrendo_portas:
+            resultado = self._varredor_portas.coletar()
+            if resultado is not None:
+                self._ao_concluir_varredura_de_portas(resultado)
         if self._ao_vivo.adquirindo:
             progresso = (self._agora_ms() - self._ao_vivo.inicio_transicao_ms) / DURACAO_TRANSICAO_MATIZ_MS
             self._ao_vivo.fase_transicao = min(1.0, progresso)
@@ -1197,12 +1235,13 @@ class EsquizoController(
 
         # A porta em cache foi derivada para o hardware anterior, e a lista de portas
         # seriais muda quando o Arduino deixa de ser o fake (que anuncia portas fictícias).
+        # A lista é esvaziada AGORA, e não só quando a varredura voltar: manter as portas
+        # fictícias do fake visíveis depois de voltar ao hardware real ofereceria uma porta
+        # que não existe, e o erro só apareceria na tentativa de conexão.
         self._porta_bitalino_em_cache = None
-        self._portas_seriais_disponiveis = self._arduino.listar_portas()
-        if self._selecao.porta_arduino not in self._portas_seriais_disponiveis:
-            self._selecao.porta_arduino = (
-                self._portas_seriais_disponiveis[0] if self._portas_seriais_disponiveis else ''
-            )
+        self._portas_seriais_disponiveis = []
+        self._selecao.porta_arduino = ''
+        self._pedir_varredura_de_portas()
 
         # O canal ativo é estado da SELEÇÃO, não do leitor: sem reaplicá-lo, os leitores
         # novos converteriam o canal 1 enquanto a tela mostra outro. Nenhum erro, cor errada.
@@ -1274,14 +1313,19 @@ class EsquizoController(
     def _leitor_do_modo_escolhido(self) -> LeitorBitalino:
         return self._leitores_por_modo[self._modo_aquisicao_escolhido()]
 
-    def _porta_derivada_do_bitalino(self) -> str:
+    def _porta_derivada_do_bitalino(self, *, bloqueando: bool = False) -> str:
         """Descobre a porta de acesso do BITalino a partir do MAC escolhido.
 
-        Derivada a cada consulta, e não guardada: a porta muda se o operador trocar de
-        dispositivo ou repareá-lo, e um valor guardado envelheceria em silêncio.
-
         Devolve string vazia quando não há porta — dispositivo não pareado, desligado, ou
-        sistema fora do Windows.
+        sistema fora do Windows — e também enquanto a varredura ainda não voltou.
+
+        Args:
+            bloqueando: Se pode varrer o sistema aqui mesmo, na thread de quem chamou. Só
+                o caminho de CONECTAR usa isto: ali a porta é a resposta, e devolver vazio
+                faria a conexão tentar um endereço em branco. Os BINDINGS da view usam o
+                padrão (`False`), que apenas dispara a varredura em segundo plano e deixa
+                `varrendoPortas` acender — varrer dentro de um binding congelaria o event
+                loop, e com ele o próprio indicador que anuncia a espera.
         """
         if not self._modo_aquisicao_escolhido().exige_porta_de_acesso:
             return ''
@@ -1290,16 +1334,67 @@ class EsquizoController(
         if self._porta_bitalino_em_cache is not None and self._porta_bitalino_em_cache[0] == mac:
             return self._porta_bitalino_em_cache[1]
 
+        if not bloqueando:
+            self._pedir_varredura_de_portas()
+            return ''
+
         porta = (
             portas_bluetooth.derivar_porta(mac=mac, portas_do_sistema=portas_bluetooth.listar_portas_do_sistema()) or ''
         )
         self._porta_bitalino_em_cache = (mac, porta)
         return porta
 
+    # ---- varredura de portas -------------------------------------------------
+    def _pedir_varredura_de_portas(self) -> None:
+        """Manda varrer as portas numa thread auxiliar, se já não houver uma varredura em curso.
+
+        Chamável de dentro de um binding: a guarda de reentrância é o que impede o ciclo
+        "binding lê vazio → pede varredura → varredura emite → binding lê vazio de novo".
+        """
+        if self._varrendo_portas:
+            return
+
+        self._varrendo_portas = True
+        self._varredor_portas.varrer(listar_portas_seriais=self._arduino.listar_portas, mac=self._selecao.mac_bitalino)
+        self.estadoMudou.emit()
+
+    @Slot()
+    def reexaminarPortas(self) -> None:
+        """Varre as portas de novo, a pedido de quem está operando.
+
+        A interface Tkinter nunca detectou hotplug e a Qt herdou isso: as portas eram
+        listadas uma vez, na abertura, e um Arduino plugado depois só aparecia reiniciando o
+        app. Com a varredura já fora da GUI thread, repetir passou a custar nada — e num
+        cabo que caiu no meio da montagem, reiniciar a obra é o pior momento possível.
+        """
+        self._porta_bitalino_em_cache = None
+        self._pedir_varredura_de_portas()
+
+    def _ao_concluir_varredura_de_portas(self, resultado: ResultadoVarredura) -> None:
+        """Aplica o que a varredura encontrou. Sempre na GUI thread — quem chama é o
+        `QTimer` de drenagem, ver `_ao_bater_o_relogio`."""
+        self._varrendo_portas = False
+        self._portas_seriais_disponiveis = resultado.portas_seriais
+        self._porta_bitalino_em_cache = (resultado.mac, resultado.porta_bitalino)
+
+        # A porta escolhida pode ter sumido entre uma varredura e outra (cabo removido), e
+        # deixá-la selecionada faria a conexão falhar apontando para uma porta inexistente.
+        if self._selecao.porta_arduino not in self._portas_seriais_disponiveis:
+            self._selecao.porta_arduino = (
+                self._portas_seriais_disponiveis[0] if self._portas_seriais_disponiveis else ''
+            )
+
+        self._reavaliar_prontidao()
+        self._emitir_todos_os_sinais()
+
     def _endereco_do_modo_escolhido(self) -> str:
-        """Onde encontrar o dispositivo, conforme o modo: MAC no OpenSignals, porta no Direto."""
+        """Onde encontrar o dispositivo, conforme o modo: MAC no OpenSignals, porta no Direto.
+
+        Varre bloqueando se preciso: aqui a porta não pode ser "ainda não sei". Já estamos
+        no gesto de conectar, que o operador sabe que demora.
+        """
         if self._modo_aquisicao_escolhido().exige_porta_de_acesso:
-            return self._porta_derivada_do_bitalino()
+            return self._porta_derivada_do_bitalino(bloqueando=True)
         return self._selecao.mac_bitalino
 
     def _conectar_bitalino(self, ao_concluir: Callable[[], None] | None = None) -> None:
@@ -1312,6 +1407,9 @@ class EsquizoController(
         """
         self._continuacao_apos_conectar_bitalino = ao_concluir
         self._conectando_bitalino = True
+        # Espera visível: o toast anuncia que algo está em curso mesmo quando quem disparou
+        # foi "Começar aquisição", com o painel de setup fechado.
+        self._reportar(catalogo_erros.conectando_bitalino())
         leitor = self._leitor_do_modo_escolhido()
 
         # O canal ativo é informado ANTES de conectar porque, no Modo Direto, é ele que
@@ -1334,6 +1432,14 @@ class EsquizoController(
         self._conectando_bitalino = False
         continuacao = self._continuacao_apos_conectar_bitalino
         self._continuacao_apos_conectar_bitalino = None
+
+        # Retira o toast "conectando…" — ele descreve uma espera que acabou. Só o dele: um
+        # recado que tenha chegado por cima no meio da tentativa é notícia mais nova, e
+        # apagá-lo faria uma mensagem sumir sem ninguém ter lido.
+        if self._toast_atual is not None and self._toast_atual.situacao is catalogo_erros.Situacao.CONECTANDO_BITALINO:
+            self._toast_atual = None
+        self.estadoMudou.emit()
+
         if not sucesso:
             self._reportar(catalogo_erros.falha_conexao_bitalino(mensagem_erro))
             return
@@ -1408,6 +1514,18 @@ class EsquizoController(
             self.desfazerRestauracaoAparencia()
 
     toastAberto = Property(bool, lambda self: self._toast_atual is not None, notify=_Sinais.estadoMudou)
+
+    def _toast_descreve_algo_em_curso(self) -> bool:
+        """Se o toast atual anuncia uma espera que ainda não terminou.
+
+        Muda o desenho do toast (indicador no lugar do glifo de severidade) e desliga o
+        auto-fechamento: um recado que sai sozinho depois de 7 s mentiria sobre uma espera
+        que ainda está acontecendo. Quem abre uma mensagem em andamento é responsável por
+        retirá-la — ver `_ao_concluir_conexao_bitalino`.
+        """
+        return self._toast_atual is not None and self._toast_atual.situacao in _SITUACOES_EM_ANDAMENTO
+
+    toastEmAndamento = Property(bool, _toast_descreve_algo_em_curso, notify=_Sinais.estadoMudou)
     toastAcaoRotulo = Property(str, lambda self: self._rotulo_da_acao_do_toast(), notify=_Sinais.estadoMudou)
     toastSituacao = Property(str, lambda self: self._campo_do_toast('situacao'), notify=_Sinais.estadoMudou)
     toastSeveridade = Property(str, lambda self: self._campo_do_toast('severidade'), notify=_Sinais.estadoMudou)

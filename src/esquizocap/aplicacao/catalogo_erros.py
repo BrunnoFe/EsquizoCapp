@@ -96,6 +96,13 @@ class Situacao(Enum):
     AQUISICAO_PAROU_ARDUINO = 'aquisicao_parou_arduino'
     FALHA_CONEXAO_ARDUINO = 'falha_conexao_arduino'
     FALHA_CONEXAO_BITALINO = 'falha_conexao_bitalino'
+    CONECTANDO_BITALINO = 'conectando_bitalino'
+    """Segundo caso do catálogo em que nada deu errado — aqui nem sequer terminou.
+
+    É uma mensagem EM ANDAMENTO: aparece quando a tentativa de conexão começa e é retirada
+    quando ela acaba, com sucesso ou não. Vive no catálogo pelo mesmo motivo que
+    `APARENCIA_RESTAURADA`: `EspecificacaoCaixa` é o contrato de qualquer mensagem do app,
+    e abrir um segundo caminho só para esperas custaria mais do que resolve."""
     SIMULACAO_BLOQUEADA = 'simulacao_bloqueada'
     FALHA_AO_SALVAR_GRAVACAO = 'falha_ao_salvar_gravacao'
     PASTA_GRAVACOES_NAO_CRIADA = 'pasta_gravacoes_nao_criada'
@@ -276,6 +283,26 @@ def falha_conexao_bitalino(mensagem_erro: str) -> EspecificacaoCaixa:
         ),
         # O detalhe repetiria a mesma frase que já está na mensagem: o texto que chega aqui
         # já é a mensagem da exceção original, não o objeto.
+    )
+
+
+def conectando_bitalino() -> EspecificacaoCaixa:
+    """A conexão do BITalino começou e ainda não voltou.
+
+    Existe porque conectar leva SEGUNDOS — resolver o stream LSL ou abrir a porta serial —
+    e até aqui o app não dizia nada nesse intervalo. Iniciar a aquisição com o aparelho
+    desconectado conecta primeiro (ver `EsquizoController.iniciarAquisicao`), então a espera
+    acontece longe do painel de setup, onde nem o botão de conectar está à vista.
+
+    É INFO: vira toast, nunca caixa modal. Uma caixa no centro da tela por causa de uma
+    espera normal atrapalharia mais do que a espera. Quem a mostra retira quando ela termina
+    (`_ao_concluir_conexao_bitalino`) — não é um recado que expira sozinho.
+    """
+    return _caixa(
+        situacao=Situacao.CONECTANDO_BITALINO,
+        severidade=Severidade.INFO,
+        titulo='Conectando ao BITalino',
+        mensagem='Procurando o aparelho. Pode levar alguns segundos.',
     )
 
 

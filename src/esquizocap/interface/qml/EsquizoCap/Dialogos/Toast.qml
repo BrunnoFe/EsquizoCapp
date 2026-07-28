@@ -22,6 +22,12 @@ Item {
     property string identidade: ""
     property int duracaoMs: 7000
 
+    // Variante "em andamento": o recado descreve uma espera que ainda não terminou, e não
+    // um fato consumado. Troca o glifo de severidade pelo indicador da marca e DESLIGA o
+    // auto-fechamento — sumir sozinho depois de 7 s enquanto a espera continua diria que
+    // ela acabou. Quem abriu um toast destes é quem o retira.
+    property bool emAndamento: false
+
     // Ação opcional ("Desfazer"). Vazio deixa o toast exatamente como sempre foi: quase
     // todo recado é de ferramenta e só tem o "✕".
     property string textoAcao: ""
@@ -38,8 +44,15 @@ Item {
     opacity: aberto ? 1 : 0
     Behavior on opacity { NumberAnimation { duration: Theme.duracaoFade; easing.type: Easing.OutCubic } }
 
-    onIdentidadeChanged: if (aberto) relogio.restart()
-    onAbertoChanged: aberto ? relogio.restart() : relogio.stop()
+    function reavaliarRelogio() {
+        if (aberto && !emAndamento) relogio.restart(); else relogio.stop()
+    }
+
+    onIdentidadeChanged: if (aberto) reavaliarRelogio()
+    onAbertoChanged: reavaliarRelogio()
+    // Um toast em andamento que vira notícia consumada (a conexão falhou e o mesmo toast
+    // passa a ser um erro) precisa recomeçar a contagem — senão fica na tela para sempre.
+    onEmAndamentoChanged: reavaliarRelogio()
 
     Timer {
         id: relogio
@@ -76,8 +89,15 @@ Item {
             anchors { fill: parent; leftMargin: 16; rightMargin: 8; topMargin: 12; bottomMargin: 12 }
             spacing: 10
 
+            // Marcador à esquerda do título: o glifo de severidade, ou — quando a coisa
+            // ainda está acontecendo — a marca girando. Os dois ocupam os mesmos 18 px, de
+            // modo que a bolha não muda de forma quando a espera termina.
+            //
+            // Só um dos dois está visível por vez, o que também mantém a regra de um único
+            // indicador de carregamento por região da tela: esta é a região do topo.
             Rectangle {
                 Layout.alignment: Qt.AlignTop
+                visible: !toast.emAndamento
                 implicitWidth: 18; implicitHeight: 18; radius: 9
                 color: toast.destaque
                 Text {
@@ -85,6 +105,12 @@ Item {
                     text: Theme.glifoDaSeveridade(toast.severidade)
                     color: "#0b0b0e"; font.pixelSize: 11; font.bold: true
                 }
+            }
+
+            IndicadorCarregando {
+                Layout.alignment: Qt.AlignTop
+                size: 18
+                running: toast.emAndamento
             }
 
             ColumnLayout {
